@@ -116,7 +116,8 @@ export default function LoginPage() {
           </form>
         ) : (
           <form 
-            action={mode === 'login' ? login : handleSignup}
+            action={mode === 'login' ? '/api/login' : handleSignup}
+            method="POST"
             className={styles.form}
           >
             <input

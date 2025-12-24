@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 
@@ -16,14 +17,25 @@ export async function login(formData: FormData): Promise<AuthResult | never> {
     password: formData.get('password') as string,
   };
 
-  const { error } = await supabase.auth.signInWithPassword(data);
+  const { data: authData, error } = await supabase.auth.signInWithPassword(data);
 
   if (error) {
     return { error: error.message };
   }
 
-  // Redirect after successful login - Server Actions handle cookies automatically
-  // signInWithPassword automatically triggers setAll to set cookies via the server client
+  if (!authData.session) {
+    return { error: 'Failed to create session' };
+  }
+
+  // Call getSession() after signInWithPassword to ensure setAll is triggered
+  // This reads the session and should trigger cookie writing
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  
+  if (sessionError || !session) {
+    return { error: sessionError?.message || 'Failed to get session' };
+  }
+
+  revalidatePath('/', 'layout');
   redirect('/ask');
 }
 
