@@ -1,0 +1,70 @@
+.container {
+  padding: 1rem 1.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.percentage {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.track {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.high {
+  color: var(--success);
+}
+
+.high.fill {
+  background: var(--success);
+}
+
+.medium {
+  color: var(--warning);
+}
+
+.medium.fill {
+  background: var(--warning);
+}
+
+.low {
+  color: var(--error);
+}
+
+.low.fill {
+  background: var(--error);
+}
+
+.insufficient {
+  color: var(--text-muted);
+}
+
+.insufficient.fill {
+  background: var(--text-muted);
+}
+

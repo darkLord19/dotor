@@ -1,0 +1,38 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.connected {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+}
+
+.disconnected {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error);
+}
+
+.indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.connected .indicator {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.disconnected .indicator {
+  background: var(--error);
+}
+
+.label {
+  font-weight: 500;
+}
+

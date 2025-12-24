@@ -1,0 +1,27 @@
+{
+  "name": "anor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Privacy-first personal assistant",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:webapp": "pnpm --filter webapp dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:e2e": "tsx scripts/e2e-test.ts",
+    "audit:privacy": "tsx scripts/privacy-audit.ts",
+    "clean": "pnpm -r clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
+
