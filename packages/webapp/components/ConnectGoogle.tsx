@@ -12,20 +12,21 @@ export function ConnectGoogle() {
     setError(null);
 
     try {
-      // Dynamically import supabase to get the session
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
+      // Get session from Next.js API route (reads from cookies)
+      const sessionResponse = await fetch('/api/session');
+      
+      if (!sessionResponse.ok) {
         setError('Please log in first');
         return;
       }
 
+      const sessionData = await sessionResponse.json();
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
       // Get the auth URL from the backend
-      const response = await fetch('http://localhost:3001/google/auth-url', {
+      const response = await fetch(`${backendUrl}/google/auth-url`, {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${sessionData.accessToken}`,
         },
       });
 

@@ -36,11 +36,6 @@ interface GoogleStatus {
   needsRefresh?: boolean;
 }
 
-// Lazy load supabase client
-export const getSupabase = async () => {
-  const { createClient } = await import('@/lib/supabase/client');
-  return createClient();
-};
 
 export default function AskPage() {
   const [query, setQuery] = useState('');
@@ -84,76 +79,26 @@ export default function AskPage() {
   useEffect(() => {
     const checkAuth = async () => {
       console.log('[ASK PAGE] Starting auth check');
-      console.log('[ASK PAGE] Document cookies:', document.cookie);
       
-      const supabase = await getSupabase();
-      
-      // First, try to get session and set it explicitly if we have cookies
-      const { data: { session: initialSession } } = await supabase.auth.getSession();
-      console.log('[ASK PAGE] Initial session check:', {
-        hasSession: !!initialSession,
-        userId: initialSession?.user?.id,
-      });
-      
-      // Retry getting user a few times - cookies might not be available immediately after redirect
-      let user = null;
-      for (let i = 0; i < 5; i++) {
-        console.log(`[ASK PAGE] Auth check attempt ${i + 1}/5`);
-        const { data, error } = await supabase.auth.getUser();
-        console.log('[ASK PAGE] getUser result:', {
-          hasUser: !!data.user,
-          userId: data.user?.id,
-          error: error?.message,
-        });
+      // Get session from Next.js API route (reads from cookies)
+      try {
+        const sessionResponse = await fetch('/api/session');
         
-        if (data.user) {
-          user = data.user;
-          console.log('[ASK PAGE] User found:', user.id);
-          break;
-        }
-        // Wait a bit before retrying
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-      
-      if (!user) {
-        console.log('[ASK PAGE] No user found, checking session');
-        // Final check - try getting session instead
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        console.log('[ASK PAGE] getSession result:', {
-          hasSession: !!session,
-          userId: session?.user?.id,
-          error: sessionError?.message,
-        });
-        
-        if (!session) {
-          console.log('[ASK PAGE] No session found, checking all cookies');
-          // Debug: log all cookies
-          const allCookies = document.cookie.split(';').map(c => c.trim());
-          console.log('[ASK PAGE] All cookies:', allCookies);
-          
-          console.log('[ASK PAGE] Redirecting to login');
+        if (!sessionResponse.ok) {
+          console.log('[ASK PAGE] No session found, redirecting to login');
           router.push('/login');
           return;
         }
-        // If we have session but no user, try to get user from session
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) {
-          console.log('[ASK PAGE] Session exists but no user, redirecting to login');
-          router.push('/login');
-          return;
-        }
-        user = userData.user;
-        console.log('[ASK PAGE] User found from session:', user.id);
-      }
-      
-      setUser(user);
-      // Check Google connection status
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        console.log('[ASK PAGE] Session available, checking Google connection');
-        checkGoogleConnection(session.access_token);
-      } else {
-        console.log('[ASK PAGE] No session for Google check');
+        
+        const sessionData = await sessionResponse.json();
+        setUser(sessionData.user);
+        
+        // Check Google connection status
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+        checkGoogleConnection(sessionData.accessToken);
+      } catch (error) {
+        console.error('[ASK PAGE] Auth check error:', error);
+        router.push('/login');
       }
     };
 
@@ -166,10 +111,10 @@ export default function AskPage() {
     if (searchParams.get('google_connected') === 'true') {
       // Refresh Google status after successful connection
       const refreshStatus = async () => {
-        const supabase = await getSupabase();
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          checkGoogleConnection(session.access_token);
+        const sessionResponse = await fetch('/api/session');
+        if (sessionResponse.ok) {
+          const sessionData = await sessionResponse.json();
+          checkGoogleConnection(sessionData.accessToken);
         }
       };
       refreshStatus();
@@ -191,18 +136,21 @@ export default function AskPage() {
     setResponse(null);
 
     try {
-      const supabase = await getSupabase();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+      // Get session from Next.js API route
+      const sessionResponse = await fetch('/api/session');
+      if (!sessionResponse.ok) {
         router.push('/login');
         return;
       }
+      
+      const sessionData = await sessionResponse.json();
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
-      const res = await fetch('http://localhost:3001/ask', {
+      const res = await fetch(`${backendUrl}/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': `Bearer ${sessionData.accessToken}`,
         },
         body: JSON.stringify({ query }),
       });
@@ -211,7 +159,7 @@ export default function AskPage() {
       setResponse(data);
 
       if (data.requires_extension && data.request_id) {
-        pollForResults(data.request_id, session.access_token);
+        pollForResults(data.request_id, sessionData.accessToken);
       }
     } catch (error) {
       console.error('Ask error:', error);
@@ -266,8 +214,11 @@ export default function AskPage() {
   };
 
   const handleSignOut = async () => {
-    const supabase = await getSupabase();
-    await supabase.auth.signOut();
+    try {
+      await fetch('/api/signout', { method: 'POST' });
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
     router.push('/login');
   };
 
@@ -331,15 +282,6 @@ export default function AskPage() {
         </div>
         <div className={styles.headerRight}>
           <ExtensionStatus connected={extensionConnected} />
-          {googleStatus?.email && (
-            <div className={styles.googleConnected}>
-              <svg className={styles.googleSmallIcon} viewBox="0 0 24 24" width="16" height="16">
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              </svg>
-              <span>{googleStatus.email}</span>
-            </div>
-          )}
           <div className={styles.userMenu}>
             <button 
               onClick={() => router.push('/settings')} 

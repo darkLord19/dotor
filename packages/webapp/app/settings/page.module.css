@@ -47,96 +47,304 @@
   border-color: var(--border-accent);
 }
 
-.container {
-  max-width: 800px;
+.content {
+  display: flex;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  min-height: calc(100vh - 80px);
 }
 
-.title {
-  font-size: 2rem;
-  font-weight: 600;
-  margin-bottom: 2rem;
+.sidebar {
+  width: 240px;
+  padding: 2rem 0;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0 1rem;
+}
+
+.navItem {
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+.navItem:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.navItemActive {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.mainContent {
+  flex: 1;
+  padding: 2rem;
 }
 
 .section {
-  margin-bottom: 3rem;
-  padding: 1.5rem;
-  background: var(--bg-secondary);
-  border-radius: var(--radius);
-  border: 1px solid var(--border-subtle);
+  max-width: 600px;
 }
 
 .sectionTitle {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   font-weight: 600;
+  margin-bottom: 2rem;
+  color: var(--text-primary);
+}
+
+.message {
+  padding: 1rem;
+  border-radius: var(--radius);
   margin-bottom: 1.5rem;
-  color: var(--text-primary);
+  font-size: 0.9rem;
 }
 
-.profileInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.messageSuccess {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--success);
 }
 
-.profileField {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.messageError {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: var(--error);
 }
 
-.profileField label {
+.formGroup {
+  margin-bottom: 2rem;
+}
+
+.label {
+  display: block;
   font-size: 0.875rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
 }
 
-.profileValue {
-  font-size: 1rem;
+.input {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
   color: var(--text-primary);
+  font-size: 0.95rem;
+  font-family: var(--font-sans);
+  transition: all 0.2s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.readOnlyValue {
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 0.95rem;
   font-family: var(--font-mono);
 }
 
-.emptyState {
-  text-align: center;
-  padding: 2rem;
-  color: var(--text-secondary);
+.helpText {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
 }
 
-.connectionsList {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.updateButton {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1.5rem;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
 }
 
-.connectionItem {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.updateButton:hover:not(:disabled) {
+  background: var(--accent-secondary);
+  transform: translateY(-1px);
+}
+
+.updateButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteButton {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1.5rem;
+  background: transparent;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  color: var(--error);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.deleteButton:hover {
+  background: var(--error);
+  color: var(--text-primary);
+}
+
+.deleteConfirm {
+  margin-top: 1rem;
   padding: 1rem;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius);
+}
+
+.deleteWarning {
+  color: var(--error);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.deleteActions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.cancelButton {
+  padding: 0.5rem 1.5rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.cancelButton:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border-accent);
+}
+
+.confirmDeleteButton {
+  padding: 0.5rem 1.5rem;
+  background: var(--error);
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.confirmDeleteButton:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.confirmDeleteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.accountProvider {
+  padding: 1.5rem;
   background: var(--bg-tertiary);
   border-radius: var(--radius);
   border: 1px solid var(--border-subtle);
 }
 
-.connectionInfo {
+.providerHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.providerInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.providerName {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 1.1rem;
+}
+
+.connectionDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.scopes {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  flex: 1;
 }
 
-.connectionType {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.connectionTypeName {
+.scopesLabel {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
   font-weight: 500;
+}
+
+.scopesList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+}
+
+.scopeItem {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  padding-left: 0;
+}
+
+.connectButton {
+  padding: 0.5rem 1rem;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius);
   color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.connectButton:hover {
+  background: var(--accent-secondary);
+  transform: translateY(-1px);
 }
 
 .connectionEmail {
@@ -183,4 +391,3 @@
   min-height: 100vh;
   color: var(--text-secondary);
 }
-

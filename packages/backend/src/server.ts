@@ -4,6 +4,7 @@ import { healthRoutes } from './routes/health.js';
 import { askRoutes } from './routes/ask.js';
 import { domRoutes } from './routes/dom.js';
 import { googleRoutes } from './routes/google.js';
+import { accountRoutes } from './routes/account.js';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -36,6 +37,7 @@ async function buildServer() {
   await fastify.register(askRoutes);
   await fastify.register(domRoutes);
   await fastify.register(googleRoutes);
+  await fastify.register(accountRoutes);
 
   return fastify;
 }

@@ -8,7 +8,7 @@ type AuthResult = {
   success?: string;
 };
 
-export async function login(formData: FormData): Promise<AuthResult> {
+export async function login(formData: FormData): Promise<AuthResult | never> {
   const supabase = await createClient();
 
   const data = {
@@ -22,8 +22,9 @@ export async function login(formData: FormData): Promise<AuthResult> {
     return { error: error.message };
   }
 
-  // Return success - client will handle redirect
-  return { success: 'Login successful' };
+  // Redirect after successful login - Server Actions handle cookies automatically
+  // signInWithPassword automatically triggers setAll to set cookies via the server client
+  redirect('/ask');
 }
 
 export async function signup(formData: FormData): Promise<AuthResult> {

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import styles from './page.module.css';
-import { signup, loginWithGoogle, loginWithMagicLink } from './actions';
+import { login, signup, loginWithGoogle, loginWithMagicLink } from './actions';
 
 type AuthMode = 'login' | 'signup' | 'magic';
 
@@ -116,8 +116,7 @@ export default function LoginPage() {
           </form>
         ) : (
           <form 
-            action={mode === 'login' ? '/api/login' : handleSignup}
-            method="POST"
+            action={mode === 'login' ? login : handleSignup}
             className={styles.form}
           >
             <input
