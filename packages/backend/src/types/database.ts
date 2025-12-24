@@ -14,11 +14,12 @@ export type Database = {
   }
   public: {
     Tables: {
-      google_connections: {
+      connections: {
         Row: {
           id: string
           user_id: string
-          google_email: string
+          type: string
+          email: string | null
           access_token: string
           refresh_token: string
           token_expires_at: string
@@ -29,7 +30,8 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
-          google_email: string
+          type: string
+          email?: string | null
           access_token: string
           refresh_token: string
           token_expires_at: string
@@ -40,7 +42,8 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
-          google_email?: string
+          type?: string
+          email?: string | null
           access_token?: string
           refresh_token?: string
           token_expires_at?: string

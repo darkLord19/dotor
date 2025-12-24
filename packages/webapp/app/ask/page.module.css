@@ -42,6 +42,25 @@
   font-size: 0.875rem;
 }
 
+.settingsButton {
+  padding: 0.5rem;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.settingsButton:hover {
+  color: var(--text-primary);
+  border-color: var(--border-accent);
+  background: var(--bg-tertiary);
+}
+
 .signOutButton {
   padding: 0.5rem 1rem;
   background: transparent;

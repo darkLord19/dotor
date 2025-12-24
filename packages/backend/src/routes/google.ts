@@ -9,6 +9,7 @@ import { google } from 'googleapis';
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/userinfo.email',
 ];
 
 const callbackSchema = z.object({
@@ -17,6 +18,34 @@ const callbackSchema = z.object({
 });
 
 export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
+  // Get all connections
+  fastify.get('/connections', {
+    preHandler: verifyJWT,
+  }, async (request, reply) => {
+    const authRequest = request as AuthenticatedRequest;
+    const supabase = createUserClient(authRequest.accessToken);
+
+    const { data, error } = await supabase
+      .from('connections')
+      .select('type, email, scopes, created_at, token_expires_at')
+      .eq('user_id', authRequest.userId);
+
+    if (error) {
+      fastify.log.error(error, 'Failed to fetch connections');
+      return reply.code(500).send({ error: 'Failed to fetch connections' });
+    }
+
+    const connections = (data || []).map(conn => ({
+      type: conn.type,
+      email: conn.email,
+      scopes: conn.scopes,
+      connectedAt: conn.created_at,
+      needsRefresh: new Date(conn.token_expires_at) < new Date(),
+    }));
+
+    return connections;
+  });
+
   // Get Google connection status
   fastify.get('/google/status', {
     preHandler: verifyJWT,
@@ -24,11 +53,12 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
     const authRequest = request as AuthenticatedRequest;
     const supabase = createUserClient(authRequest.accessToken);
 
-    // Get google connection (email comes from auth.users via getUser)
+    // Get google connection
     const { data, error } = await supabase
-      .from('google_connections')
-      .select('scopes, created_at, token_expires_at')
+      .from('connections')
+      .select('email, scopes, created_at, token_expires_at')
       .eq('user_id', authRequest.userId)
+      .eq('type', 'google')
       .single();
 
     if (error && error.code !== 'PGRST116') {
@@ -40,19 +70,12 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
       return { connected: false };
     }
 
-    // Get user email from auth.users
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      fastify.log.error(userError, 'Failed to fetch user');
-      return reply.code(500).send({ error: 'Failed to fetch user info' });
-    }
-
     // Check if token is expired
     const isExpired = new Date(data.token_expires_at) < new Date();
 
     return {
       connected: true,
-      email: user.email || null,
+      email: data.email,
       scopes: data.scopes,
       connectedAt: data.created_at,
       needsRefresh: isExpired,
@@ -119,6 +142,29 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: 'Failed to get tokens from Google' });
       }
 
+      // Get user's Google email using the access token
+      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: {
+          'Authorization': `Bearer ${tokens.access_token}`,
+        },
+      });
+
+      if (!userInfoResponse.ok) {
+        const errorText = await userInfoResponse.text();
+        fastify.log.error({
+          status: userInfoResponse.status,
+          error: errorText,
+        }, 'Failed to fetch user info from Google');
+        return reply.code(400).send({ error: 'Failed to get user info from Google' });
+      }
+
+      const userInfo = await userInfoResponse.json();
+      const googleEmail = userInfo.email;
+
+      if (!googleEmail) {
+        return reply.code(400).send({ error: 'Could not get Google email' });
+      }
+
       // Calculate expiry time
       const expiresAt = new Date(Date.now() + (tokens.expiry_date || 3600 * 1000));
 
@@ -129,22 +175,22 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
       });
 
       // Upsert the connection (using admin client since user isn't authenticated here)
-      // google_email is now nullable - email comes from user's auth account via profile join
       const { error: upsertError } = await supabaseAdmin
-        .from('google_connections')
+        .from('connections')
         .upsert({
           user_id: stateData.userId,
-          google_email: null, // Email comes from auth.users via profile join
+          type: 'google',
+          email: googleEmail,
           access_token: encryptedTokens.access_token,
           refresh_token: encryptedTokens.refresh_token,
           token_expires_at: expiresAt.toISOString(),
           scopes: SCOPES,
         }, {
-          onConflict: 'user_id',
+          onConflict: 'user_id,type',
         });
 
       if (upsertError) {
-        fastify.log.error(upsertError, 'Failed to save google connection');
+        fastify.log.error(upsertError, 'Failed to save connection');
         return reply.code(500).send({ error: 'Failed to save connection' });
       }
 
@@ -166,9 +212,10 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
     const supabase = createUserClient(authRequest.accessToken);
 
     const { error } = await supabase
-      .from('google_connections')
+      .from('connections')
       .delete()
-      .eq('user_id', authRequest.userId);
+      .eq('user_id', authRequest.userId)
+      .eq('type', 'google');
 
     if (error) {
       fastify.log.error(error, 'Failed to disconnect google');

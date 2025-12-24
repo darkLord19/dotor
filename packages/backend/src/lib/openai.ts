@@ -85,12 +85,18 @@ Respond with a JSON object containing:
 
 // Analyze user query to determine which data sources are needed
 export async function analyzeQuery(userQuery: string): Promise<QueryAnalysis> {
+  // Get today's date for context
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+  
   const response = await openai.chat.completions.create({
     model: DEFAULT_MODEL,
     messages: [
       {
         role: 'system',
         content: `You analyze user questions to determine which data sources are needed.
+
+IMPORTANT: Today's date is ${todayStr}. Use this as a reference point for calculating date ranges.
 
 Data sources available:
 - Gmail: For email-related questions (messages, conversations, attachments)
@@ -101,6 +107,12 @@ Data sources available:
 Analyze the query and determine:
 1. Which sources are needed (multiple can be true)
 2. Search parameters for each source
+
+For calendarDateRange:
+- Use today's date (${todayStr}) as the reference point
+- Calculate relative dates correctly (e.g., "this week" means the current week starting from ${todayStr})
+- Format dates as YYYY-MM-DD
+- If no specific date range is mentioned, use reasonable defaults based on today's date
 
 Respond with a JSON object:
 {

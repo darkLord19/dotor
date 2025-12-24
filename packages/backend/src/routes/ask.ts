@@ -52,9 +52,10 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
 
     // Get user's Google connection
     const { data: googleConnection, error: connectionError } = await supabase
-      .from('google_connections')
+      .from('connections')
       .select('*')
       .eq('user_id', authRequest.userId)
+      .eq('type', 'google')
       .single();
 
     if (connectionError || !googleConnection) {
@@ -101,11 +102,13 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
         if (supabaseAdmin) {
           const encryptedAccessToken = encrypt(accessToken);
           await supabaseAdmin
-            .from('google_connections')
+            .from('connections')
             .update({
               access_token: encryptedAccessToken,
               token_expires_at: new Date(newTokens.expiry_date || Date.now() + 3600000).toISOString(),
             })
+            .eq('user_id', authRequest.userId)
+            .eq('type', 'google')
             .eq('user_id', authRequest.userId);
         }
       } catch (error) {
