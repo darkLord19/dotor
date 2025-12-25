@@ -220,7 +220,7 @@ async function waitForTabToLoad(tabId: number, maxWait = 30000): Promise<void> {
     };
 
     // Also listen for tab updates
-    const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+    const listener = (updatedTabId: number, changeInfo: any) => {
       if (updatedTabId === tabId && changeInfo.status === 'complete' && !resolved) {
         resolved = true;
         chrome.tabs.onUpdated.removeListener(listener);

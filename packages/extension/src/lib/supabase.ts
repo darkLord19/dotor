@@ -27,7 +27,7 @@ export async function saveSession(session: { access_token: string; refresh_token
 
 export async function loadSession(): Promise<{ access_token: string; refresh_token: string } | null> {
   const result = await chrome.storage.local.get(SESSION_KEY);
-  return result[SESSION_KEY] ?? null;
+  return (result[SESSION_KEY] as { access_token: string; refresh_token: string }) ?? null;
 }
 
 export async function clearSession() {

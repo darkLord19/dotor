@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { verifyJWT, type AuthenticatedRequest } from '../middleware/auth.js';
+import { verifyJWT, type AuthenticatedRequest } from '../proxy/auth.js';
 import type { DOMInstruction, SearchHit } from '../types/search.js';
 
 // In-memory store for pending requests (in production, use Redis)

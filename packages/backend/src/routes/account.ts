@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { verifyJWT, type AuthenticatedRequest } from '../middleware/auth.js';
+import { verifyJWT, type AuthenticatedRequest } from '../proxy/auth.js';
 import { createUserClient, supabaseAdmin } from '../lib/supabase.js';
 
 const updateProfileSchema = z.object({

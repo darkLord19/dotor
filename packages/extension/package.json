@@ -11,13 +11,12 @@
   },
   "dependencies": {
     "@anor/ui": "workspace:*",
-    "@supabase/supabase-js": "^2.39.0"
+    "@supabase/supabase-js": "2.89.0"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.254",
+    "@types/chrome": "0.1.32",
     "@types/node": "^20.10.0",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.0"
+    "typescript": "5.9.3",
+    "vite": "7.3.0"
   }
 }
-
