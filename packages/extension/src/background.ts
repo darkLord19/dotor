@@ -168,9 +168,9 @@ async function handleMessage(message: Message): Promise<unknown> {
       
       try {
         // Execute instructions directly in background script (don't use api.js which sends messages)
-        await executeDOMInstructionsDirect(request.payload.instructions);
+        const results = await executeDOMInstructionsDirect(request.payload.instructions);
         console.log('[Anor Background] All DOM instructions executed successfully');
-        return { success: true };
+        return { success: true, results };
       } catch (error) {
         console.error('[Anor Background] Error executing DOM instructions:', error);
         throw error; // Re-throw to be caught by message handler
@@ -184,7 +184,7 @@ async function handleMessage(message: Message): Promise<unknown> {
 }
 
 // Get or create a tab for a source
-async function getOrCreateTab(source: 'linkedin' | 'whatsapp'): Promise<chrome.tabs.Tab | null> {
+async function getOrCreateTab(source: 'linkedin' | 'whatsapp'): Promise<{ tab: chrome.tabs.Tab | null, isNew: boolean }> {
   const url = source === 'linkedin'
     ? 'https://www.linkedin.com/messaging/'
     : 'https://web.whatsapp.com/';
@@ -199,7 +199,7 @@ async function getOrCreateTab(source: 'linkedin' | 'whatsapp'): Promise<chrome.t
   const existingTabs = await chrome.tabs.query({ url: urlPattern });
   if (existingTabs.length > 0) {
     console.log(`[Anor Background] Found existing ${source} tab:`, existingTabs[0]!.id, 'URL:', existingTabs[0]!.url);
-    return existingTabs[0]!;
+    return { tab: existingTabs[0]!, isNew: false };
   }
 
   // No tab found, create one in the background
@@ -217,10 +217,10 @@ async function getOrCreateTab(source: 'linkedin' | 'whatsapp'): Promise<chrome.t
     await waitForTabToLoad(newTab.id!);
 
     console.log(`[Anor Background] ${source} tab loaded successfully`);
-    return newTab;
+    return { tab: newTab, isNew: true };
   } catch (error) {
     console.error(`[Anor Background] Failed to create ${source} tab:`, error);
-    return null;
+    return { tab: null, isNew: false };
   }
 }
 
@@ -285,7 +285,7 @@ async function handleDOMSearch(payload: DOMSearchRequest['payload']): Promise<DO
   console.log(`[Anor Background] Starting DOM search for ${source} with keywords:`, keywords);
 
   // Get or create the tab
-  const tab = await getOrCreateTab(source);
+  const { tab, isNew } = await getOrCreateTab(source);
 
   if (!tab || !tab.id) {
     console.error(`[Anor Background] Failed to get or create ${source} tab`);
@@ -325,6 +325,42 @@ async function handleDOMSearch(payload: DOMSearchRequest['payload']): Promise<DO
       
       // Check if it's a "receiving end does not exist" error (content script not injected)
       if (errorMsg.includes('receiving end') || errorMsg.includes('Could not establish connection')) {
+        console.log(`[Anor Background] Content script missing on tab ${tab.id} (${tab.url}). Attempting to inject...`);
+        
+        try {
+          // Determine which script to inject
+          const scriptFile = source === 'linkedin' ? 'content-linkedin.js' : 'content-whatsapp.js';
+          
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id! },
+            files: [scriptFile],
+          });
+          
+          console.log(`[Anor Background] Injected ${scriptFile} into tab ${tab.id}`);
+          
+          // Wait a bit for the script to initialize
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Retry immediately
+          continue;
+        } catch (injectError) {
+          console.error(`[Anor Background] Failed to inject script:`, injectError);
+          
+          // Fallback to reload if injection fails
+          if (!isNew && attempt === 0) {
+            console.log(`[Anor Background] Injection failed. Reloading tab ${tab.id}...`);
+            try {
+              await chrome.tabs.reload(tab.id!);
+              console.log(`[Anor Background] Tab ${tab.id} reloaded. Waiting for load...`);
+              await waitForTabToLoad(tab.id!);
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              continue;
+            } catch (reloadError) {
+              console.error(`[Anor Background] Failed to reload tab ${tab.id}:`, reloadError);
+            }
+          }
+        }
+
         // Wait longer and try again
         await new Promise(resolve => setTimeout(resolve, 1000));
         continue;
@@ -362,60 +398,13 @@ async function executeDOMInstructionsDirect(
     source: 'linkedin' | 'whatsapp';
     keywords: string[];
   }>
-): Promise<void> {
+): Promise<Array<{ source: string; snippets: string[]; error?: string | undefined }>> {
   if (instructions.length === 0) {
-    return;
+    return [];
   }
 
-  const requestId = instructions[0]!.request_id;
-
-  // Submit results function that doesn't require Supabase client
-  // We'll get the token directly from storage to avoid importing Supabase
-  async function submitAskResultsDirect(
-    requestId: string,
-    source: string,
-    snippets: string[],
-    error?: string
-  ): Promise<{ error?: string }> {
-    try {
-      // Get access token directly from storage (avoid Supabase client)
-      const SESSION_KEY = 'anor_session';
-      const sessionData = await chrome.storage.local.get(SESSION_KEY);
-      const session = sessionData[SESSION_KEY];
-      const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        return { error: 'Not authenticated' };
-      }
-
-      const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
-      const response = await fetch(`${API_BASE}/ask/${requestId}/dom-results`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          source,
-          snippets,
-          error,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        return { error: data.error ?? 'Request failed' };
-      }
-
-      return {};
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : 'Request failed' };
-    }
-  }
-
-  // Execute all instructions in parallel
-  await Promise.all(
+  // Execute all instructions in parallel and collect results
+  const results = await Promise.all(
     instructions.map(async (instruction) => {
       try {
         console.log(`[Anor Background] Executing instruction for ${instruction.source} with keywords:`, instruction.keywords);
@@ -432,33 +421,24 @@ async function executeDOMInstructionsDirect(
         
         console.log(`[Anor Background] Search completed for ${instruction.source}: ${snippets.length} snippets${error ? `, error: ${error}` : ''}`);
         
-        // Submit results to backend
-        const submitResult = await submitAskResultsDirect(
-          requestId,
-          instruction.source,
+        return {
+          source: instruction.source,
           snippets,
           error
-        );
-        
-        if (submitResult.error) {
-          console.error(`[Anor Background] Failed to submit results for ${instruction.source}:`, submitResult.error);
-        } else {
-          console.log(`[Anor Background] Results submitted successfully for ${instruction.source}`);
-        }
+        };
       } catch (error) {
         console.error(`[Anor Background] Error executing instruction for ${instruction.source}:`, error);
         
-        // Submit error to backend
-        const errorMessage = error instanceof Error ? error.message : 'Execution failed';
-        await submitAskResultsDirect(
-          requestId,
-          instruction.source,
-          [],
-          errorMessage
-        );
+        return {
+          source: instruction.source,
+          snippets: [],
+          error: error instanceof Error ? error.message : 'Execution failed'
+        };
       }
     })
   );
+
+  return results;
 }
 
 // Expose for direct calls from popup

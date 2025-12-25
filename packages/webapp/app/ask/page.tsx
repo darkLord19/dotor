@@ -166,6 +166,90 @@ function AskPageContent() {
     };
   }, [checkExtension]);
 
+  // Listen for extension results
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleExtensionResults = async (event: MessageEvent) => {
+      if (event.data && event.data.type === 'ANOR_EXTENSION_RESULTS') {
+        console.log('[ASK PAGE] Received results from extension:', event.data.payload);
+        
+        const { request_id, results } = event.data.payload;
+        
+        if (!request_id || !results) {
+          console.error('[ASK PAGE] Invalid results payload:', event.data.payload);
+          return;
+        }
+        
+        try {
+          // Get session
+          const sessionResponse = await fetch('/api/session');
+          if (!sessionResponse.ok) {
+            console.error('[ASK PAGE] Failed to get session for submitting results');
+            return;
+          }
+          
+          const sessionData = await sessionResponse.json();
+          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+          
+          // Submit each result to the backend
+          for (const result of results) {
+            console.log(`[ASK PAGE] Submitting results for ${result.source}...`);
+            
+            const res = await fetch(`${backendUrl}/ask/${request_id}/dom-results`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${sessionData.accessToken}`,
+              },
+              body: JSON.stringify({
+                source: result.source,
+                snippets: result.snippets,
+                error: result.error,
+              }),
+            });
+            
+            if (!res.ok) {
+              console.error(`[ASK PAGE] Failed to submit results for ${result.source}:`, res.status);
+            } else {
+              console.log(`[ASK PAGE] Successfully submitted results for ${result.source}`);
+            }
+          }
+          
+        } catch (error) {
+          console.error('[ASK PAGE] Error submitting extension results:', error);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleExtensionResults);
+    return () => {
+      window.removeEventListener('message', handleExtensionResults);
+    };
+  }, []);
+
+  // Listen for extension results (via window.postMessage)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleExtensionResults = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'ANOR_EXTENSION_RESULTS') {
+        console.log('[ASK PAGE] Received results from extension via postMessage:', event.data.payload);
+        
+        const { request_id, results } = event.data.payload;
+        
+        if (request_id && results) {
+          submitExtensionResults(request_id, results);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleExtensionResults);
+    return () => {
+      window.removeEventListener('message', handleExtensionResults);
+    };
+  }, []);
+
   const checkGoogleConnection = useCallback(async (accessToken: string) => {
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
@@ -353,6 +437,46 @@ function AskPageContent() {
     }
   }, [searchParams, router, checkGoogleConnection]);
 
+  const submitExtensionResults = async (requestId: string, results: any[]) => {
+    try {
+      // Get session
+      const sessionResponse = await fetch('/api/session');
+      if (!sessionResponse.ok) {
+        console.error('[ASK PAGE] Failed to get session for submitting results');
+        return;
+      }
+      
+      const sessionData = await sessionResponse.json();
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      
+      // Submit each result to the backend
+      for (const result of results) {
+        console.log(`[ASK PAGE] Submitting results for ${result.source}...`);
+        
+        const res = await fetch(`${backendUrl}/ask/${requestId}/dom-results`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionData.accessToken}`,
+          },
+          body: JSON.stringify({
+            source: result.source,
+            snippets: result.snippets,
+            error: result.error,
+          }),
+        });
+        
+        if (!res.ok) {
+          console.error(`[ASK PAGE] Failed to submit results for ${result.source}:`, res.status);
+        } else {
+          console.log(`[ASK PAGE] Successfully submitted results for ${result.source}`);
+        }
+      }
+    } catch (error) {
+      console.error('[ASK PAGE] Error submitting extension results:', error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim() || loading) return;
@@ -439,6 +563,9 @@ function AskPageContent() {
                       }, window.location.origin);
                     } else {
                       console.log('[ASK PAGE] Direct message sent successfully, response:', response);
+                      if (response && response.results) {
+                        submitExtensionResults(data.request_id, response.results);
+                      }
                     }
                   }
                 );

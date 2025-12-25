@@ -206,6 +206,19 @@ if (typeof window !== 'undefined') {
               } else {
                 console.log('[Anor Webapp Content] ✅ Instructions forwarded successfully!');
                 console.log('[Anor Webapp Content] Response from background:', response);
+                
+                // If response contains results, forward them to the webapp
+                if (response && response.results) {
+                  console.log('[Anor Webapp Content] Forwarding results to webapp:', response.results);
+                  window.postMessage({
+                    type: 'ANOR_EXTENSION_RESULTS',
+                    payload: {
+                      request_id: event.data.payload.request_id,
+                      results: response.results
+                    }
+                  }, window.location.origin);
+                }
+                
                 resolve();
               }
             });
