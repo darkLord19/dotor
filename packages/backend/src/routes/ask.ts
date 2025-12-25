@@ -6,7 +6,7 @@ import { analyzeQuery, planGmailQuery } from '../lib/openai.js';
 import { searchGmail } from '../lib/gmail.js';
 import { getCalendarEvents, refreshAccessToken } from '../lib/calendar.js';
 import { normalizeGmailResults, normalizeCalendarResults, mergeResults } from '../lib/normalizer.js';
-import { synthesizeAnswer, type Answer } from '../lib/synthesizer.js';
+import { synthesizeAnswer } from '../lib/synthesizer.js';
 import { decryptTokens, encrypt } from '../lib/encryption.js';
 import type { SearchHit, PendingSearch, DOMInstruction } from '../types/search.js';
 
@@ -66,7 +66,7 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     // Decrypt the stored tokens
-    let decryptedTokens;
+    let decryptedTokens: { access_token: string; refresh_token: string };
     try {
       decryptedTokens = decryptTokens({
         access_token: googleConnection.access_token,
@@ -316,6 +316,37 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // Get pending search status
+  fastify.get('/ask/:requestId', {
+    preHandler: verifyJWT,
+  }, async (request, reply) => {
+    const authRequest = request as AuthenticatedRequest;
+    const { requestId } = request.params as { requestId: string };
+
+    const pendingSearch = pendingSearches.get(requestId);
+    
+    if (!pendingSearch) {
+      return reply.code(404).send({ error: 'Search not found' });
+    }
+    
+    if (pendingSearch.user_id !== authRequest.userId) {
+      return reply.code(403).send({ error: 'Not authorized' });
+    }
+
+    const response: any = {
+      status: pendingSearch.status,
+      request_id: requestId,
+      sources_needed: pendingSearch.sources_needed,
+    };
+
+    // Include answer if complete
+    if (pendingSearch.status === 'complete' && pendingSearch.answer) {
+      response.answer = pendingSearch.answer;
+    }
+
+    return response;
+  });
+
+  // Get pending search status (Legacy)
   fastify.get('/ask/:requestId/status', {
     preHandler: verifyJWT,
   }, async (request, reply) => {
@@ -381,24 +412,29 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
     );
 
     if (allSourcesComplete) {
-      pendingSearch.status = 'complete';
-      
-      // Synthesize final answer
-      const allResults = mergeResults(...Object.values(pendingSearch.results).filter(Boolean) as SearchHit[][]);
-      const answer = await synthesizeAnswer(pendingSearch.query, allResults);
+      // Trigger synthesis in background
+      (async () => {
+        try {
+          const allResults = mergeResults(...Object.values(pendingSearch.results).filter(Boolean) as SearchHit[][]);
+          const answer = await synthesizeAnswer(pendingSearch.query, allResults);
 
-      // Store answer before cleanup (keep for a short time for polling)
-      pendingSearch.answer = answer;
+          // Store answer before cleanup (keep for a short time for polling)
+          pendingSearch.answer = answer;
+          pendingSearch.status = 'complete';
 
-      // Clean up after a delay to allow polling
-      setTimeout(() => {
-        pendingSearches.delete(requestId);
-      }, 30000); // Keep for 30 seconds after completion
+          // Clean up after a delay to allow polling
+          setTimeout(() => {
+            pendingSearches.delete(requestId);
+          }, 30000); // Keep for 30 seconds after completion
+        } catch (error) {
+          fastify.log.error(error, 'Background synthesis failed');
+          pendingSearch.status = 'failed';
+        }
+      })();
 
       return {
-        status: 'complete',
+        status: 'processing',
         request_id: requestId,
-        answer,
       };
     }
 

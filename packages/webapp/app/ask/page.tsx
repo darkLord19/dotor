@@ -128,8 +128,8 @@ function AskPageContent() {
                 type: 'EXECUTE_DOM_INSTRUCTIONS',
                 payload: payload,
               },
-              (response) => {
-                if (chrome.runtime.lastError) {
+              (_response) => {
+                if (chrome.runtime?.lastError) {
                   console.warn('[ASK PAGE] Direct messaging also failed:', chrome.runtime.lastError.message);
                   setExtensionConnected(false);
                   // Re-check extension connection after a short delay
@@ -438,6 +438,7 @@ function AskPageContent() {
   }, [searchParams, router, checkGoogleConnection]);
 
   const submitExtensionResults = async (requestId: string, results: any[]) => {
+    console.log('[ASK PAGE] submitExtensionResults called with:', { requestId, resultsCount: results?.length });
     try {
       // Get session
       const sessionResponse = await fetch('/api/session');
@@ -553,8 +554,10 @@ function AskPageContent() {
                   extensionId,
                   message,
                   (response) => {
-                    if (chrome.runtime.lastError) {
-                      const errorMsg = chrome.runtime.lastError.message || 'Unknown error';
+                    // Check for lastError safely
+                    const lastError = chrome.runtime?.lastError;
+                    if (lastError) {
+                      const errorMsg = lastError.message || 'Unknown error';
                       console.warn('[ASK PAGE] Direct messaging failed, falling back to window.postMessage:', errorMsg);
                       // Fallback to window.postMessage
                       window.postMessage({
@@ -621,7 +624,7 @@ function AskPageContent() {
     const poll = async () => {
       try {
         // Poll the ask endpoint for results
-        const res = await fetch(`${backendUrl}/ask/${requestId}/status`, {
+        const res = await fetch(`${backendUrl}/ask/${requestId}`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
           },
@@ -635,23 +638,13 @@ function AskPageContent() {
 
         // If complete, fetch the full answer
         if (statusData.status === 'complete') {
-          // Try to get the answer from the ask endpoint
-          const answerRes = await fetch(`${backendUrl}/ask/${requestId}/status`, {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-            },
-          });
-          
-          if (answerRes.ok) {
-            const answerData = await answerRes.json();
-            if (answerData.answer) {
-              setResponse(prev => ({
-                ...prev!,
-                status: 'complete',
-                answer: answerData.answer,
-              }));
-              return;
-            }
+          if (statusData.answer) {
+            setResponse(prev => ({
+              ...prev!,
+              status: 'complete',
+              answer: statusData.answer,
+            }));
+            return;
           }
           
           // Fallback: just mark as complete

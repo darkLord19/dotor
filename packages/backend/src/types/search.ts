@@ -1,3 +1,5 @@
+import type { Answer } from '../lib/synthesizer.js';
+
 // Unified search result format
 export interface SearchHit {
   id: string;

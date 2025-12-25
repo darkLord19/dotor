@@ -9,6 +9,7 @@ const contentScripts = [
   { name: 'content-linkedin', path: 'src/content/linkedin.ts' },
   { name: 'content-whatsapp', path: 'src/content/whatsapp.ts' },
   { name: 'content-webapp', path: 'src/content/webapp.ts' },
+  { name: 'content-interceptor', path: 'src/content/interceptor.ts' },
 ];
 
 console.log('Building content scripts...');

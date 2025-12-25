@@ -3,6 +3,47 @@
  * Searches by using LinkedIn's search functionality and collecting messages
  */
 
+let interceptedMessages: any[] = [];
+
+// Listen for messages from the MAIN world interceptor
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  if (event.data.type === 'LINKEDIN_MESSAGES_INTERCEPTED') {
+    console.log('[Anor LinkedIn] Intercepted GraphQL messages', event.data.data);
+    processInterceptedData(event.data.data);
+  }
+});
+
+function processInterceptedData(data: any) {
+  try {
+    // Handle different response structures
+    const elements = data?.data?.messengerMessagesByAnchorTimestamp?.elements || 
+                    data?.data?.messengerMessages?.elements;
+
+    if (Array.isArray(elements)) {
+      const newMessages = elements.map((msg: any) => {
+        const body = msg.body?.text || '';
+        const senderFirstName = msg.actor?.participantType?.member?.firstName?.text || '';
+        const senderLastName = msg.actor?.participantType?.member?.lastName?.text || '';
+        const sender = `${senderFirstName} ${senderLastName}`.trim();
+        const timestamp = msg.deliveredAt;
+        
+        return {
+          sender,
+          message: body,
+          timestamp: new Date(timestamp).toISOString()
+        };
+      }).filter((msg: any) => msg.message); // Filter out empty messages
+      
+      // Add to buffer
+      interceptedMessages = [...interceptedMessages, ...newMessages];
+      console.log(`[Anor LinkedIn] Added ${newMessages.length} messages to buffer. Total: ${interceptedMessages.length}`);
+    }
+  } catch (e) {
+    console.error('[Anor LinkedIn] Error processing intercepted data', e);
+  }
+}
+
 // LinkedIn messaging selectors (may need updates as LinkedIn changes their UI)
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'SEARCH_DOM') {
@@ -14,7 +55,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'SCRAPE_MESSAGES') {
     console.log('[Anor LinkedIn] Received scrape request');
     
-    // Handle async operation
+    // Return intercepted messages if we have them
+    if (interceptedMessages.length > 0) {
+        console.log(`[Anor LinkedIn] Returning ${interceptedMessages.length} intercepted messages`);
+        const snippets = interceptedMessages.map(m => JSON.stringify(m));
+        sendResponse({ snippets });
+        return true;
+    }
+
+    // Handle async operation (Fallback to DOM scraping)
     (async () => {
       try {
         const snippets = await scrapeCurrentPage();
@@ -45,7 +94,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
  */
 async function scrapeCurrentPage(): Promise<string[]> {
   const currentUrl = window.location.href;
-  console.log('[Anor LinkedIn] Scraping messages, current URL:', currentUrl);
+  console.log('[Anor LinkedIn] Scraping messages (DOM Fallback), current URL:', currentUrl);
   
   // Check if we're on a messaging page
   if (!currentUrl.includes('/messaging/')) {
@@ -130,6 +179,8 @@ async function scrapeCurrentPage(): Promise<string[]> {
     await delay(3000);
     
     // Step 3: Scroll up 10 times to load more messages
+    // Scrolling disabled for now as it was causing issues finding the container
+    /*
     // Try to find the message list container more aggressively
     let messageList = null;
     const messageListSelectors = [
@@ -180,31 +231,62 @@ async function scrapeCurrentPage(): Promise<string[]> {
           console.warn('[Anor LinkedIn] Could not find message list container to scroll. Tried selectors:', messageListSelectors);
       }
     }
+    */
     
     // Step 4: Collect all messages from the conversation
-    // Try multiple selectors for message content
-    const messageSelectors = [
-      '.msg-s-event-listitem__message-bubble',
-      '.msg-s-message-list__event',
-      '[data-view-name="message-item"]',
-      '.msg-s-event-listitem__body',
-      'p.msg-s-event-listitem__body',
-      '.msg-s-event-with-indicator'
-    ];
+    // We want structured data: { sender, message, timestamp }
     
-    console.log('[Anor LinkedIn] Using message selectors:', messageSelectors);
-    const messageElements = Array.from(document.querySelectorAll(messageSelectors.join(', ')));
+    // Find all message list items (events)
+    const messageEvents = Array.from(document.querySelectorAll('li.msg-s-message-list__event'));
+    console.log(`[Anor LinkedIn] Found ${messageEvents.length} message events`);
     
-    console.log(`[Anor LinkedIn] Found ${messageElements.length} messages in this conversation`);
+    let currentSender = 'Unknown';
     
-    for (const msgElement of messageElements) {
-      const text = msgElement.textContent?.trim();
-      if (text && text.length > 0) {
-        // Store full message text
-        if (!allSnippets.includes(text)) {
-          allSnippets.push(text);
+    for (const event of messageEvents) {
+        // 1. Try to extract sender from this event (it might be a group header)
+        const senderEl = event.querySelector('.msg-s-message-group__name');
+        if (senderEl) {
+            currentSender = senderEl.textContent?.trim() || currentSender;
+        } else {
+            // Fallback: check for "X sent the following message" hidden text
+            const hiddenText = (event as HTMLElement).innerText; // innerText includes hidden text usually
+            if (hiddenText.includes('sent the following message')) {
+                const match = hiddenText.match(/^(.+?) sent the following message/);
+                if (match && match[1]) {
+                    currentSender = match[1].trim();
+                }
+            }
         }
-      }
+        
+        // 2. Try to extract timestamp
+        let timestamp = '';
+        const timeEl = event.querySelector('time');
+        if (timeEl) {
+            timestamp = timeEl.textContent?.trim() || '';
+        }
+        
+        // 3. Extract message body
+        const bodyEl = event.querySelector('.msg-s-event-listitem__body');
+        if (bodyEl) {
+            // Use innerText to preserve newlines/formatting, fallback to textContent
+            const message = (bodyEl as HTMLElement).innerText?.trim() || bodyEl.textContent?.trim() || '';
+            
+            if (message) {
+                // Create structured object
+                const snippetObj = {
+                    sender: currentSender,
+                    message: message,
+                    timestamp: timestamp
+                };
+                
+                // Serialize to JSON string to fit the string[] interface
+                const snippetJson = JSON.stringify(snippetObj);
+                
+                if (!allSnippets.includes(snippetJson)) {
+                    allSnippets.push(snippetJson);
+                }
+            }
+        }
     }
   }
   
