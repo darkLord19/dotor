@@ -223,7 +223,26 @@ html, body {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 12px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 4px 8px;
+  background: rgba(52, 168, 83, 0.1);
+  color: #34a853;
+  border-radius: 12px;
+  border: 1px solid rgba(52, 168, 83, 0.2);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: #34a853;
+  border-radius: 50%;
 }
 
 .user-menu {

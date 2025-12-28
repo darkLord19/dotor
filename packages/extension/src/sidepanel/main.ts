@@ -1,28 +1,23 @@
 import { 
-  signInWithOAuth, 
   signInWithPassword, 
   signUp, 
-  signInWithMagicLink,
   signOut
-} from '../lib/supabase.js';
-import type { User } from '@supabase/supabase-js';
+} from '../lib/auth.js';
+import { getGoogleStatus } from '../lib/api.js';
+import { getUser, type User } from '../lib/session.js';
 
 // UI Elements
 const loginScreen = document.getElementById('login-screen')!;
 const chatScreen = document.getElementById('chat-screen')!;
-const googleLoginBtn = document.getElementById('google-login-btn')! as HTMLButtonElement;
 const emailForm = document.getElementById('email-form')! as HTMLFormElement;
-const magicForm = document.getElementById('magic-form')! as HTMLFormElement;
 const emailInput = document.getElementById('email-input')! as HTMLInputElement;
 const passwordInput = document.getElementById('password-input')! as HTMLInputElement;
-const magicEmailInput = document.getElementById('magic-email-input')! as HTMLInputElement;
 const submitBtn = document.getElementById('submit-btn')! as HTMLButtonElement;
-const magicSubmitBtn = document.getElementById('magic-submit-btn')! as HTMLButtonElement;
 const toggleSignupBtn = document.getElementById('toggle-signup')!;
-const toggleMagicBtn = document.getElementById('toggle-magic')!;
 const messageDiv = document.getElementById('message')!;
 const loginTitle = document.getElementById('login-title')!;
 const loginSubtitle = document.getElementById('login-subtitle')!;
+const googleStatusBadge = document.getElementById('google-status')!;
 
 // Chat UI Elements
 const userEmailDisplay = document.getElementById('user-email-display')!;
@@ -35,14 +30,13 @@ const hintsDiv = document.getElementById('hints')!;
 
 // State
 let currentUser: User | null = null;
-let authMode: 'login' | 'signup' | 'magic' = 'login';
+let authMode: 'login' | 'signup' = 'login';
 let isSubmitting = false;
 
 // Initialize
 async function init() {
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_SESSION' });
-    currentUser = response.user;
+    currentUser = await getUser();
     
     if (currentUser) {
       showChatScreen();
@@ -63,31 +57,36 @@ function showLoginScreen() {
 }
 
 // Show chat screen
-function showChatScreen() {
+async function showChatScreen() {
   loginScreen.style.display = 'none';
   chatScreen.style.display = 'flex';
   if (currentUser) {
     userEmailDisplay.textContent = currentUser.email ?? 'Unknown user';
+    
+    // Check google status
+    try {
+      const { data } = await getGoogleStatus();
+      if (data?.connected) {
+        googleStatusBadge.style.display = 'flex';
+      } else {
+        googleStatusBadge.style.display = 'none';
+      }
+    } catch (e) {
+      console.error('Failed to check google status', e);
+      googleStatusBadge.style.display = 'none';
+    }
   }
 }
 
 // Set auth mode
-function setAuthMode(mode: 'login' | 'signup' | 'magic') {
+function setAuthMode(mode: 'login' | 'signup') {
   authMode = mode;
   
-  if (mode === 'magic') {
-    emailForm.style.display = 'none';
-    magicForm.style.display = 'flex';
-    loginTitle.textContent = 'Sign in with magic link';
-    loginSubtitle.textContent = "We'll send you a link to sign in";
-  } else {
-    emailForm.style.display = 'flex';
-    magicForm.style.display = 'none';
-    loginTitle.textContent = mode === 'signup' ? 'Create account' : 'Welcome back';
-    loginSubtitle.textContent = mode === 'signup' 
-      ? 'Sign up to get started' 
-      : 'Sign in to access your personal assistant';
-  }
+  emailForm.style.display = 'flex';
+  loginTitle.textContent = mode === 'signup' ? 'Create account' : 'Welcome back';
+  loginSubtitle.textContent = mode === 'signup' 
+    ? 'Sign up to get started' 
+    : 'Sign in to access your personal assistant';
   
   submitBtn.textContent = mode === 'signup' ? 'Sign up' : 'Sign in';
   hideMessage();
@@ -103,25 +102,6 @@ function showMessage(text: string, isError = false) {
 function hideMessage() {
   messageDiv.className = 'message';
 }
-
-// Handle Google login
-googleLoginBtn.addEventListener('click', async () => {
-  if (isSubmitting) return;
-  
-  isSubmitting = true;
-  googleLoginBtn.disabled = true;
-  hideMessage();
-  
-  try {
-    currentUser = await signInWithOAuth();
-    showChatScreen();
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : 'Sign in failed', true);
-  } finally {
-    isSubmitting = false;
-    googleLoginBtn.disabled = false;
-  }
-});
 
 // Handle email/password form
 emailForm.addEventListener('submit', async (e) => {
@@ -158,40 +138,9 @@ emailForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Handle magic link form
-magicForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (isSubmitting) return;
-  
-  isSubmitting = true;
-  magicSubmitBtn.disabled = true;
-  hideMessage();
-  
-  const email = magicEmailInput.value.trim();
-  
-  try {
-    const result = await signInWithMagicLink(email);
-    if (result.error) {
-      showMessage(result.error, true);
-    } else {
-      showMessage('Check your email for the magic link!', false);
-    }
-  } catch (error) {
-    showMessage(error instanceof Error ? error.message : 'Failed to send magic link', true);
-  } finally {
-    isSubmitting = false;
-    magicSubmitBtn.disabled = false;
-  }
-});
-
 // Toggle signup
 toggleSignupBtn.addEventListener('click', () => {
   setAuthMode(authMode === 'signup' ? 'login' : 'signup');
-});
-
-// Toggle magic link
-toggleMagicBtn.addEventListener('click', () => {
-  setAuthMode(authMode === 'magic' ? 'login' : 'magic');
 });
 
 // Handle sign out

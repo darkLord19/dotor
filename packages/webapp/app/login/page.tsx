@@ -128,7 +128,6 @@ export default function LoginPage() {
               disabled={isPending}
               autoComplete="email"
               required
-              defaultValue={mode === 'login' ? 'test@example.com' : undefined}
             />
             <input
               type="password"
@@ -138,7 +137,6 @@ export default function LoginPage() {
               disabled={isPending}
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               required
-              defaultValue={mode === 'login' ? 'testpassword123' : undefined}
             />
             <button
               type="submit"
@@ -194,10 +192,6 @@ export default function LoginPage() {
         <p className={styles.privacy}>
           🔒 Your data is never stored. Privacy-first.
         </p>
-
-        <div className={styles.testCredentials}>
-          <p>Test account: test@example.com / testpassword123</p>
-        </div>
       </div>
     </main>
   );

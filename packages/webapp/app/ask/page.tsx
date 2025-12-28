@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import styles from './page.module.css';
 import { AnswerCard } from '@/components/AnswerCard';
 import { ConfidenceBar } from '@/components/ConfidenceBar';
@@ -183,13 +184,14 @@ function AskPageContent() {
         
         try {
           // Get session
-          const sessionResponse = await fetch('/api/session');
-          if (!sessionResponse.ok) {
+          const supabase = createClient();
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (!session) {
             console.error('[ASK PAGE] Failed to get session for submitting results');
             return;
           }
           
-          const sessionData = await sessionResponse.json();
           const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
           
           // Submit each result to the backend
@@ -200,7 +202,7 @@ function AskPageContent() {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${sessionData.accessToken}`,
+                'Authorization': `Bearer ${session.access_token}`,
               },
               body: JSON.stringify({
                 source: result.source,
@@ -324,18 +326,11 @@ function AskPageContent() {
     const checkAuth = async () => {
       console.log('[ASK PAGE] Starting auth check');
       
-      // Get session from Next.js API route (reads from cookies)
       try {
-        const sessionController = new AbortController();
-        const sessionTimeout = setTimeout(() => sessionController.abort(), 5000); // 5 second timeout for session check
+        const supabase = createClient();
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        const sessionResponse = await fetch('/api/session', {
-          signal: sessionController.signal,
-        });
-        
-        clearTimeout(sessionTimeout);
-        
-        if (!sessionResponse.ok) {
+        if (error || !session) {
           console.log('[ASK PAGE] No session found, redirecting to login');
           if (isMounted) {
             setCheckingGoogle(false);
@@ -345,43 +340,18 @@ function AskPageContent() {
           return;
         }
         
-        let sessionData;
-        try {
-          sessionData = await sessionResponse.json();
-        } catch (jsonError) {
-          console.error('[ASK PAGE] Failed to parse session response:', jsonError);
-          if (isMounted) {
-            setCheckingGoogle(false);
-            setGoogleStatus({ connected: false });
-            setInitError('Failed to parse session data. Please try logging in again.');
-          }
-          return;
-        }
-        
         if (!isMounted) return;
         
-        if (!sessionData || !sessionData.user || !sessionData.accessToken) {
-          console.error('[ASK PAGE] Invalid session data:', sessionData);
-          setCheckingGoogle(false);
-          setGoogleStatus({ connected: false });
-          router.push('/login');
-          return;
-        }
-        
-        setUser(sessionData.user);
+        setUser(session.user);
         
         // Check Google connection status
         if (isMounted) {
-          await checkGoogleConnection(sessionData.accessToken);
+          await checkGoogleConnection(session.access_token);
         }
       } catch (error) {
         if (!isMounted) return;
         
-        if (error instanceof Error && error.name === 'AbortError') {
-          console.error('[ASK PAGE] Session check timed out');
-        } else {
-          console.error('[ASK PAGE] Auth check error:', error);
-        }
+        console.error('[ASK PAGE] Auth check error:', error);
         
         setCheckingGoogle(false);
         setGoogleStatus({ connected: false });
@@ -420,10 +390,10 @@ function AskPageContent() {
     if (searchParams.get('google_connected') === 'true') {
       // Refresh Google status after successful connection
       const refreshStatus = async () => {
-        const sessionResponse = await fetch('/api/session');
-        if (sessionResponse.ok) {
-          const sessionData = await sessionResponse.json();
-          checkGoogleConnection(sessionData.accessToken);
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          checkGoogleConnection(session.access_token);
         }
       };
       refreshStatus();
@@ -441,13 +411,14 @@ function AskPageContent() {
     console.log('[ASK PAGE] submitExtensionResults called with:', { requestId, resultsCount: results?.length });
     try {
       // Get session
-      const sessionResponse = await fetch('/api/session');
-      if (!sessionResponse.ok) {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
         console.error('[ASK PAGE] Failed to get session for submitting results');
         return;
       }
       
-      const sessionData = await sessionResponse.json();
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
       
       // Submit each result to the backend
@@ -458,7 +429,7 @@ function AskPageContent() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${sessionData.accessToken}`,
+            'Authorization': `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             source: result.source,
@@ -487,20 +458,21 @@ function AskPageContent() {
 
     try {
       // Get session from Next.js API route
-      const sessionResponse = await fetch('/api/session');
-      if (!sessionResponse.ok) {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
         router.push('/login');
         return;
       }
       
-      const sessionData = await sessionResponse.json();
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
       const res = await fetch(`${backendUrl}/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionData.accessToken}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ query }),
       });

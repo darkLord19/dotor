@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import styles from './page.module.css';
 
 interface Connection {
@@ -35,19 +36,18 @@ export default function SettingsPage() {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
       
       try {
-        // Get session from Next.js API route (reads from cookies)
-        const sessionResponse = await fetch('/api/session');
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
         
-        if (!sessionResponse.ok) {
+        if (!session) {
           router.push('/login');
           return;
         }
         
-        const sessionData = await sessionResponse.json();
-        const accessToken = sessionData.accessToken;
+        const accessToken = session.access_token;
         
-        setUser(sessionData.user);
-        setName(sessionData.user.name || '');
+        setUser(session.user);
+        setName(session.user.user_metadata?.full_name || session.user.user_metadata?.name || '');
         
         // Fetch connections
         const connectionsResponse = await fetch(`${backendUrl}/connections`, {
@@ -78,17 +78,17 @@ export default function SettingsPage() {
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
       
-      // Get session token
-      const sessionResponse = await fetch('/api/session');
-      if (!sessionResponse.ok) {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
         throw new Error('Not authenticated');
       }
-      const sessionData = await sessionResponse.json();
       
       const response = await fetch(`${backendUrl}/account/profile`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${sessionData.accessToken}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ name }),
@@ -126,17 +126,17 @@ export default function SettingsPage() {
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
       
-      // Get session token
-      const sessionResponse = await fetch('/api/session');
-      if (!sessionResponse.ok) {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
         throw new Error('Not authenticated');
       }
-      const sessionData = await sessionResponse.json();
       
       const response = await fetch(`${backendUrl}/account/password`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${sessionData.accessToken}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ password: newPassword }),
@@ -167,18 +167,18 @@ export default function SettingsPage() {
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
       
-      // Get session token
-      const sessionResponse = await fetch('/api/session');
-      if (!sessionResponse.ok) {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
         throw new Error('Not authenticated');
       }
-      const sessionData = await sessionResponse.json();
       
       // Call backend to request account deletion
       const response = await fetch(`${backendUrl}/account/delete`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${sessionData.accessToken}`,
+          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json',
         },
       });
@@ -209,16 +209,16 @@ export default function SettingsPage() {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
     
     try {
-      // Get session token
-      const sessionResponse = await fetch('/api/session');
-      if (!sessionResponse.ok) {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
         throw new Error('Not authenticated');
       }
-      const sessionData = await sessionResponse.json();
       
       const response = await fetch(`${backendUrl}/${type}/auth-url`, {
         headers: {
-          'Authorization': `Bearer ${sessionData.accessToken}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
       });
       
@@ -237,24 +237,24 @@ export default function SettingsPage() {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
     
     try {
-      // Get session token
-      const sessionResponse = await fetch('/api/session');
-      if (!sessionResponse.ok) {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
         throw new Error('Not authenticated');
       }
-      const sessionData = await sessionResponse.json();
       
       const response = await fetch(`${backendUrl}/${type}/disconnect`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${sessionData.accessToken}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
       });
       
       if (response.ok) {
         const connectionsResponse = await fetch(`${backendUrl}/connections`, {
           headers: {
-            'Authorization': `Bearer ${sessionData.accessToken}`,
+            'Authorization': `Bearer ${session.access_token}`,
           },
         });
         

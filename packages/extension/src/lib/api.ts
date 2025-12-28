@@ -1,7 +1,7 @@
-import { getAccessToken } from './supabase.js';
+import { getAccessToken } from './session.js';
 
 // API base URL from environment
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
+export const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001';
 
 interface DOMInstruction {
   request_id: string;
@@ -44,6 +44,40 @@ async function fetchWithAuth<T>(
   } catch (error) {
     return { error: error instanceof Error ? error.message : 'Request failed' };
   }
+}
+
+export async function login(email: string, password: string) {
+  try {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Login failed');
+    return data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function signup(email: string, password: string) {
+  try {
+    const response = await fetch(`${API_BASE}/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Signup failed');
+    return data;
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function getGoogleStatus() {
+  return fetchWithAuth<{ connected: boolean; email?: string }>('/google/status');
 }
 
 // Get DOM search instructions from backend

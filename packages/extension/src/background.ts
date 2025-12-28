@@ -1,4 +1,5 @@
-import { initSession, getAccessToken, signOut } from './lib/supabase.js';
+import { getUser, getAccessToken } from './lib/session.js';
+import { signOut } from './lib/auth.js';
 import { submitAskResults } from './lib/api.js';
 
 // Message types
@@ -41,13 +42,13 @@ console.log('[Anor Background] Background script loaded/started');
 // Initialize session on startup
 chrome.runtime.onStartup.addListener(async () => {
   console.log('[Anor Background] onStartup triggered');
-  await initSession();
+  // No need to init session with Supabase anymore
 });
 
 // Also initialize when extension is installed
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('[Anor Background] onInstalled triggered');
-  await initSession();
+  // No need to init session with Supabase anymore
 });
 
 // Open side panel when extension icon is clicked
@@ -141,7 +142,7 @@ async function handleMessage(message: Message): Promise<unknown> {
     }
 
     case 'GET_SESSION': {
-      const user = await initSession();
+      const user = await getUser();
       return { user };
     }
 
@@ -446,4 +447,4 @@ async function executeDOMInstructionsDirect(
 }
 
 // Expose for direct calls from popup
-export { initSession, getAccessToken, signOut };
+export { getUser, getAccessToken, signOut };

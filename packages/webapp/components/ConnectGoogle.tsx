@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import styles from './ConnectGoogle.module.css';
 
 export function ConnectGoogle() {
@@ -12,21 +13,20 @@ export function ConnectGoogle() {
     setError(null);
 
     try {
-      // Get session from Next.js API route (reads from cookies)
-      const sessionResponse = await fetch('/api/session');
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!sessionResponse.ok) {
+      if (!session) {
         setError('Please log in first');
         return;
       }
 
-      const sessionData = await sessionResponse.json();
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
       // Get the auth URL from the backend
       const response = await fetch(`${backendUrl}/google/auth-url`, {
         headers: {
-          'Authorization': `Bearer ${sessionData.accessToken}`,
+          'Authorization': `Bearer ${session.access_token}`,
         },
       });
 

@@ -1,13 +1,16 @@
-import { signInWithOAuth, signOut } from '../lib/supabase.js';
-import type { User } from '@supabase/supabase-js';
+import { signInWithPassword, signUp, signOut } from '../lib/auth.js';
+import { getUser, type User } from '../lib/session.js';
 
 // UI Elements
 const loginSection = document.getElementById('login-section')!;
 const userSection = document.getElementById('user-section')!;
 const loginButton = document.getElementById('login-btn')!;
+const signupButton = document.getElementById('signup-btn')!;
 const logoutButton = document.getElementById('logout-btn')!;
 const userEmail = document.getElementById('user-email')!;
 const statusDiv = document.getElementById('status')!;
+const emailInput = document.getElementById('email-input') as HTMLInputElement;
+const passwordInput = document.getElementById('password-input') as HTMLInputElement;
 
 // State
 let currentUser: User | null = null;
@@ -17,8 +20,8 @@ async function init() {
   showStatus('Checking session...');
   
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_SESSION' });
-    currentUser = response.user;
+    // We can check session directly or via background
+    currentUser = await getUser();
     updateUI();
     hideStatus();
   } catch (error) {
@@ -52,14 +55,49 @@ function hideStatus() {
 
 // Event handlers
 loginButton.addEventListener('click', async () => {
+  const email = emailInput.value;
+  const password = passwordInput.value;
+  
+  if (!email || !password) {
+    showStatus('Please enter email and password', true);
+    return;
+  }
+
   showStatus('Signing in...');
   
   try {
-    currentUser = await signInWithOAuth();
+    const data = await signInWithPassword(email, password);
+    currentUser = data.user;
     updateUI();
     hideStatus();
   } catch (error) {
-    showStatus('Sign in failed', true);
+    showStatus(error instanceof Error ? error.message : 'Sign in failed', true);
+    console.error(error);
+  }
+});
+
+signupButton.addEventListener('click', async () => {
+  const email = emailInput.value;
+  const password = passwordInput.value;
+  
+  if (!email || !password) {
+    showStatus('Please enter email and password', true);
+    return;
+  }
+
+  showStatus('Signing up...');
+  
+  try {
+    const data = await signUp(email, password);
+    if (data.session) {
+        currentUser = data.user;
+        updateUI();
+        hideStatus();
+    } else {
+        showStatus('Check your email to confirm signup');
+    }
+  } catch (error) {
+    showStatus(error instanceof Error ? error.message : 'Sign up failed', true);
     console.error(error);
   }
 });
