@@ -251,11 +251,6 @@ html, body {
   gap: 1rem;
 }
 
-.user-email {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-}
-
 .sign-out-button {
   padding: 0.5rem 1rem;
   background: transparent;

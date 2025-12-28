@@ -20,7 +20,6 @@ const loginSubtitle = document.getElementById('login-subtitle')!;
 const googleStatusBadge = document.getElementById('google-status')!;
 
 // Chat UI Elements
-const userEmailDisplay = document.getElementById('user-email-display')!;
 const signoutBtn = document.getElementById('signout-btn')! as HTMLButtonElement;
 const askForm = document.getElementById('ask-form')! as HTMLFormElement;
 const queryInput = document.getElementById('query-input')! as HTMLInputElement;
@@ -61,8 +60,6 @@ async function showChatScreen() {
   loginScreen.style.display = 'none';
   chatScreen.style.display = 'flex';
   if (currentUser) {
-    userEmailDisplay.textContent = currentUser.email ?? 'Unknown user';
-    
     // Check google status
     try {
       const { data } = await getGoogleStatus();

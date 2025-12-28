@@ -82,15 +82,22 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const { name } = parseResult.data;
-
-    if (!supabaseAdmin) {
-      return reply.code(500).send({ error: 'Server configuration error' });
-    }
+    const supabase = createUserClient(authRequest.accessToken);
 
     try {
-      // Use Admin API to update user metadata (backend should use Admin API)
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        return reply.code(401).send({ error: 'Failed to get user' });
+      }
+
+      if (!supabaseAdmin) {
+        fastify.log.error('Supabase admin client not initialized');
+        return reply.code(500).send({ error: 'Server configuration error' });
+      }
+
       const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-        authRequest.userId,
+        user.id,
         { user_metadata: { full_name: name } }
       );
 
@@ -121,16 +128,23 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     }
 
     const { password } = parseResult.data;
-
-    if (!supabaseAdmin) {
-      return reply.code(500).send({ error: 'Server configuration error' });
-    }
+    const supabase = createUserClient(authRequest.accessToken);
 
     try {
-      // Use Admin API to update password (backend should use Admin API)
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        return reply.code(401).send({ error: 'Failed to get user' });
+      }
+
+      if (!supabaseAdmin) {
+        fastify.log.error('Supabase admin client not initialized');
+        return reply.code(500).send({ error: 'Server configuration error' });
+      }
+
       const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-        authRequest.userId,
-        { password }
+        user.id,
+        { password: password }
       );
 
       if (updateError) {
