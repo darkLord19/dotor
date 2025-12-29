@@ -5,6 +5,7 @@
     "target": "ES2022",
     "lib": ["dom", "dom.iterable", "ES2022"],
     "allowJs": true,
+    "noEmit": true,
     "jsx": "preserve",
     "incremental": true,
     "moduleResolution": "bundler",
@@ -14,7 +15,5 @@
         "name": "next"
       }
     ]
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  }
 }
