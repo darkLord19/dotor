@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { getBackendUrl } from '@/lib/config';
 import styles from './ConnectGoogle.module.css';
 
 export function ConnectGoogle() {
@@ -21,7 +22,7 @@ export function ConnectGoogle() {
         return;
       }
 
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = getBackendUrl();
 
       // Get the auth URL from the backend
       const response = await fetch(`${backendUrl}/google/auth-url`, {

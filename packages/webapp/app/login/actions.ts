@@ -56,6 +56,8 @@ export async function signup(formData: FormData): Promise<AuthResult> {
   return { success: 'Check your email to confirm your account!' };
 }
 
+import { getSiteUrl } from '@/lib/config';
+
 export async function loginWithMagicLink(formData: FormData): Promise<AuthResult> {
   const supabase = await createClient();
 
@@ -64,7 +66,7 @@ export async function loginWithMagicLink(formData: FormData): Promise<AuthResult
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback`,
+      emailRedirectTo: `${getSiteUrl()}/auth/callback`,
     },
   });
 

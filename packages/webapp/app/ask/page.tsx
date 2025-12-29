@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getBackendUrl } from '@/lib/config';
 import styles from './page.module.css';
 import { AnswerCard } from '@/components/AnswerCard';
 import { ConfidenceBar } from '@/components/ConfidenceBar';
@@ -203,7 +204,7 @@ function AskPageContent() {
             return;
           }
           
-          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+          const backendUrl = getBackendUrl();
           
           // Submit each result to the backend
           for (const result of results) {
@@ -265,7 +266,7 @@ function AskPageContent() {
 
   const checkGoogleConnection = useCallback(async (accessToken: string) => {
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = getBackendUrl();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         console.warn('[ASK PAGE] Google status check timeout - aborting');
@@ -452,7 +453,7 @@ function AskPageContent() {
         return;
       }
       
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = getBackendUrl();
       
       // Submit each result to the backend
       for (const result of results) {
@@ -499,7 +500,7 @@ function AskPageContent() {
         return;
       }
       
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = getBackendUrl();
 
       const res = await fetch(`${backendUrl}/ask`, {
         method: 'POST',
@@ -624,7 +625,7 @@ function AskPageContent() {
   const pollForResults = async (requestId: string, accessToken: string) => {
     const maxAttempts = 60; // Increased timeout for extension searches
     let attempts = 0;
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    const backendUrl = getBackendUrl();
 
     const poll = async () => {
       try {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getBackendUrl } from '@/lib/config';
 import styles from './page.module.css';
 
 interface Connection {
@@ -33,7 +34,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = getBackendUrl();
       
       try {
         const supabase = createClient();
@@ -76,7 +77,7 @@ export default function SettingsPage() {
     setProfileMessage(null);
     
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = getBackendUrl();
       
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
@@ -124,7 +125,7 @@ export default function SettingsPage() {
     setProfileMessage(null);
     
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = getBackendUrl();
       
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
@@ -165,7 +166,7 @@ export default function SettingsPage() {
     setProfileMessage(null);
     
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = getBackendUrl();
       
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
@@ -206,7 +207,7 @@ export default function SettingsPage() {
   };
 
   const handleConnect = async (type: string) => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    const backendUrl = getBackendUrl();
     
     try {
       const supabase = createClient();
@@ -234,7 +235,7 @@ export default function SettingsPage() {
   };
 
   const handleDisconnect = async (type: string) => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    const backendUrl = getBackendUrl();
     
     try {
       const supabase = createClient();
