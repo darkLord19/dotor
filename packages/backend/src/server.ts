@@ -28,11 +28,12 @@ async function buildServer() {
   });
 
   // Register CORS
+  const corsOrigin = process.env.CORS_ORIGIN;
   await fastify.register(cors, {
-    origin: true, // Reflect the request origin
+    origin: corsOrigin ? corsOrigin.split(',').map(o => o.trim()) : true,
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   });
 
   // Register routes
