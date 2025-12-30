@@ -6,21 +6,28 @@
   "description": "Privacy-first personal assistant",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
-    "dev:backend": "pnpm --filter backend dev",
-    "dev:webapp": "pnpm --filter webapp dev",
+    "dev:backend": "pnpm --filter @dotor/backend dev",
+    "dev:webapp": "pnpm --filter @dotor/webapp dev",
     "build": "pnpm -r build",
+    "build:packages": "pnpm --filter './packages/*' build",
+    "build:apps": "pnpm --filter './apps/*' build",
     "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:e2e": "tsx scripts/e2e-test.ts",
     "audit:privacy": "tsx scripts/privacy-audit.ts",
-    "clean": "pnpm -r clean && rm -rf node_modules"
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {
+    "@dotor/config": "workspace:*",
+    "prettier": "^3.1.0",
     "tsx": "4.21.0",
     "typescript": "5.9.3"
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
-  }
+  },
+  "packageManager": "pnpm@9.0.0"
 }

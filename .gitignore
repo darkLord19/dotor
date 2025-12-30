@@ -1,42 +1,47 @@
 # Dependencies
-node_modules
+node_modules/
+.pnp
+.pnp.js
 
 # Build outputs
-dist
-build
-.out
-.next
-out
+dist/
+.next/
+out/
+build/
 
-# Environment files
+# Testing
+coverage/
+
+# Misc
+.DS_Store
+*.pem
+*.log
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
 .env
-.env.*
-!.env.example
+.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # IDE
-.idea
-.vscode
+.vscode/
+.idea/
 *.swp
 *.swo
+*~
 
-# OS
-.DS_Store
-Thumbs.db
+# Vercel
+.vercel
 
-# Test coverage
-coverage
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
 
-# Supabase
-supabase/.temp
-supabase/.branches
-
-# Chrome extension dev
-chrome-profile
-
-# Logs
-*.log
-npm-debug.log*
-pnpm-debug.log*
-
-.pnpm-store
-
+# Extension build
+packages/extension/dist/
