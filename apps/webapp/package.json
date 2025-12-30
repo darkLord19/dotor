@@ -22,11 +22,17 @@
   },
   "devDependencies": {
     "@dotor/tsconfig": "workspace:*",
+    "@tailwindcss/forms": "^0.5.11",
     "@types/node": "^20.10.0",
     "@types/react": "19.2.3",
     "@types/react-dom": "19.2.3",
+    "autoprefixer": "^10.4.23",
+    "clsx": "^2.1.1",
     "eslint": "9.39.2",
     "eslint-config-next": "16.1.1",
+    "postcss": "^8.5.6",
+    "tailwind-merge": "^3.4.0",
+    "tailwindcss": "^4.1.18",
     "typescript": "5.9.3"
   }
 }
