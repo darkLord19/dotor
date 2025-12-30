@@ -11,9 +11,9 @@ import { requestIdMiddleware } from './middleware/index.js';
 import { authRoutes } from './modules/auth/index.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { accountRoutes } from './modules/account/account.routes.js';
+import { googleRoutes } from './modules/google/google.routes.js';
 import { askRoutes } from './routes/ask.js';
 import { domRoutes } from './routes/dom.js';
-import { googleRoutes } from './routes/google.js';
 
 export async function buildApp() {
   const env = getEnv();
@@ -74,9 +74,9 @@ export async function buildApp() {
     await healthRoutes(instance);
     await authRoutes(instance, logger);
     await accountRoutes(instance, logger);
+    await googleRoutes(instance, logger);
     await askRoutes(instance);
     await domRoutes(instance);
-    await googleRoutes(instance);
   });
 
   return { app, logger };
