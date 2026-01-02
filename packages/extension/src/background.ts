@@ -186,6 +186,7 @@ async function handleMessage(message: Message): Promise<unknown> {
         console.log('[Dotor Background] Submitting results to backend...');
         for (const result of results) {
           try {
+            console.log(`[Dotor Background] Submitting ${result.snippets.length} snippets for ${result.source}:`, JSON.stringify(result.snippets, null, 2));
             await submitAskResults(
               request.payload.request_id,
               result.source,
@@ -282,15 +283,30 @@ async function handleDOMSearch(payload: DOMSearchRequest['payload']): Promise<DO
   }
 
   let tab: chrome.tabs.Tab | undefined;
+  let tabCreated = false;
   
   try {
-    tab = await chrome.tabs.create({
-      url,
-      active: false, // Open in background
-    });
-    console.log(`[Dotor Background] Created new ${source} tab with ID:`, tab.id);
+    // Check for existing tab for WhatsApp
+    if (source === 'whatsapp') {
+      const existingTabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
+      if (existingTabs.length > 0) {
+        tab = existingTabs[0];
+        if (tab) {
+            console.log(`[Dotor Background] Reusing existing WhatsApp tab ${tab.id}`);
+        }
+      }
+    }
+
+    if (!tab) {
+      tab = await chrome.tabs.create({
+        url,
+        active: false, // Open in background
+      });
+      tabCreated = true;
+      console.log(`[Dotor Background] Created new ${source} tab with ID:`, tab.id);
+    }
   } catch (error) {
-    console.error(`[Dotor Background] Failed to create ${source} tab:`, error);
+    console.error(`[Dotor Background] Failed to create/find ${source} tab:`, error);
     return {
       request_id,
       snippets: [],
@@ -319,21 +335,26 @@ async function handleDOMSearch(payload: DOMSearchRequest['payload']): Promise<DO
       console.log(`[Dotor Background] Processing keyword: "${keyword}"`);
       
       try {
-        // 1. Navigate to the search URL
-        const targetUrl = new URL('https://www.linkedin.com/messaging/');
-        targetUrl.searchParams.set('searchTerm', keyword);
-        const targetUrlString = targetUrl.toString();
-        
-        // Skip navigation if we're already on the correct URL (first keyword optimization)
-        if (source === 'linkedin' && i === 0) {
-             console.log(`[Dotor Background] Already on search URL for first keyword: "${keyword}"`);
-             // No need to navigate or wait, we just did
+        if (source === 'linkedin') {
+          // 1. Navigate to the search URL
+          const targetUrl = new URL('https://www.linkedin.com/messaging/');
+          targetUrl.searchParams.set('searchTerm', keyword);
+          const targetUrlString = targetUrl.toString();
+          
+          // Skip navigation if we're already on the correct URL (first keyword optimization)
+          if (i === 0) {
+              console.log(`[Dotor Background] Already on search URL for first keyword: "${keyword}"`);
+              // No need to navigate or wait, we just did
+          } else {
+              console.log(`[Dotor Background] Navigating tab ${tab.id} to ${targetUrlString}`);
+              await chrome.tabs.update(tab.id!, { url: targetUrlString });
+              
+              // 2. Wait for tab to load
+              await waitForTabToLoad(tab.id!);
+          }
         } else {
-            console.log(`[Dotor Background] Navigating tab ${tab.id} to ${targetUrlString}`);
-            await chrome.tabs.update(tab.id!, { url: targetUrlString });
-            
-            // 2. Wait for tab to load
-            await waitForTabToLoad(tab.id!);
+          // WhatsApp is a SPA, we don't navigate. The content script handles the search UI.
+          console.log(`[Dotor Background] Processing WhatsApp search for: "${keyword}"`);
         }
         
         // 3. Send scrape command
@@ -344,7 +365,8 @@ async function handleDOMSearch(payload: DOMSearchRequest['payload']): Promise<DO
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             response = await chrome.tabs.sendMessage(tab.id!, {
-              type: 'SCRAPE_MESSAGES'
+              type: 'SCRAPE_MESSAGES',
+              keyword: keyword
             });
             break; // Success
           } catch (msgError) {
@@ -354,11 +376,19 @@ async function handleDOMSearch(payload: DOMSearchRequest['payload']): Promise<DO
             const errorMsg = String(msgError);
             if (errorMsg.includes('receiving end') || errorMsg.includes('Could not establish connection')) {
                const scriptFile = source === 'linkedin' ? 'content-linkedin.js' : 'content-whatsapp.js';
-               await chrome.scripting.executeScript({
-                  target: { tabId: tab.id! },
-                  files: [scriptFile],
-               });
-               await new Promise(r => setTimeout(r, 1000));
+               console.log(`[Dotor Background] Injecting ${scriptFile} into tab ${tab.id}`);
+               try {
+                   await chrome.scripting.executeScript({
+                      target: { tabId: tab.id! },
+                      files: [scriptFile],
+                   });
+                   // Give it a moment to initialize
+                   await new Promise(r => setTimeout(r, 1000));
+               } catch (injectError) {
+                   console.error(`[Dotor Background] Failed to inject ${scriptFile}:`, injectError);
+                   // Wait a bit anyway
+                   await new Promise(r => setTimeout(r, 1000));
+               }
             } else {
                await new Promise(r => setTimeout(r, 1000));
             }
@@ -384,8 +414,8 @@ async function handleDOMSearch(payload: DOMSearchRequest['payload']): Promise<DO
     };
 
   } finally {
-    // Close the tab when done
-    if (tab && tab.id) {
+    // Close the tab when done ONLY if we created it
+    if (tabCreated && tab && tab.id) {
         try {
             await chrome.tabs.remove(tab.id);
             console.log(`[Dotor Background] Closed ${source} tab ${tab.id}`);
