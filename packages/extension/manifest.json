@@ -35,7 +35,8 @@
   "externally_connectable": {
     "matches": [
       "http://localhost:3000/*",
-      "https://localhost:3000/*"
+      "https://localhost:3000/*",
+      "https://dotor.co/*"
       // NOTE: For production, add your web app URL here, e.g.:
       // "https://your-domain.com/*"
     ]
@@ -60,7 +61,8 @@
     {
       "matches": [
         "http://localhost:3000/*",
-        "https://localhost:3000/*"
+        "https://localhost:3000/*",
+        "https://dotor.co/*"
         // NOTE: For production, add your web app URL here, e.g.:
         // "https://your-domain.com/*"
       ],

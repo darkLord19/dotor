@@ -30,7 +30,34 @@ async function buildServer() {
   // Register CORS
   const corsOrigin = process.env.CORS_ORIGIN;
   await fastify.register(cors, {
-    origin: corsOrigin ? corsOrigin.split(',').map(o => o.trim()) : true,
+    origin: (origin, cb) => {
+      // Allow requests with no origin (like server-to-server)
+      if (!origin) {
+        cb(new Error("Not allowed by CORS"), false);
+        return;
+      }
+
+      // Allow Chrome extensions
+      if (origin.startsWith('chrome-extension://')) {
+        cb(null, true);
+        return;
+      }
+
+      // If CORS_ORIGIN is set, check against it
+      if (corsOrigin) {
+        const allowedOrigins = corsOrigin.split(',').map(o => o.trim());
+        if (allowedOrigins.includes(origin)) {
+          cb(null, true);
+          return;
+        }
+        // Not allowed
+        cb(new Error("Not allowed by CORS"), false);
+        return;
+      }
+
+      // If CORS_ORIGIN is not set, disallow all
+      cb(new Error("Not allowed by CORS"), false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
