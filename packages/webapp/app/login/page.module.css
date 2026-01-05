@@ -4,17 +4,15 @@
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: 
-    radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-    var(--bg-primary);
+  background: var(--background);
 }
 
 .card {
   width: 100%;
   max-width: 400px;
   padding: 2.5rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: calc(var(--radius) + 4px);
 }
 
@@ -22,23 +20,33 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 1.25rem;
+  font-weight: 500;
   margin-bottom: 2rem;
+  color: var(--foreground);
 }
 
 .logoIcon {
-  color: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.875rem;
 }
 
 .title {
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: 0.5rem;
+  color: var(--foreground);
 }
 
 .subtitle {
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 0.9375rem;
   margin-bottom: 2rem;
 }
@@ -51,63 +59,62 @@
 
 .input {
   width: 100%;
-  padding: 0.875rem 1rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
+  padding: 0.75rem 1rem;
+  background: var(--input-background);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-primary);
-  font-size: 0.9375rem;
+  color: var(--foreground);
+  font-size: 1rem;
   font-family: var(--font-sans);
   transition: all 0.2s ease;
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent);
 }
 
 .input::placeholder {
-  color: var(--text-muted);
+  color: var(--muted-foreground);
 }
 
 .primaryButton {
   width: 100%;
-  padding: 0.875rem 1.5rem;
-  background: var(--accent-gradient);
-  color: white;
+  padding: 0.75rem 1.5rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
   border: none;
   border-radius: var(--radius);
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 500;
   font-family: var(--font-sans);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 
 .primaryButton:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  opacity: 0.9;
 }
 
 .primaryButton:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .message {
   margin-top: 1rem;
   padding: 0.75rem 1rem;
-  background: rgba(99, 102, 241, 0.1);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
   border-radius: var(--radius);
-  color: var(--accent-primary);
+  color: var(--primary);
   font-size: 0.875rem;
   text-align: center;
 }
 
 .message.error {
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--error);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
 }
 
 .authToggle {
@@ -120,7 +127,7 @@
 .linkButton {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 0.875rem;
   cursor: pointer;
   padding: 0.25rem;
@@ -128,26 +135,26 @@
 }
 
 .linkButton:hover {
-  color: var(--accent-primary);
+  color: var(--primary);
 }
 
 .privacy {
   margin-top: 1.5rem;
   text-align: center;
-  color: var(--text-muted);
+  color: var(--muted-foreground);
   font-size: 0.8125rem;
 }
 
 .testCredentials {
   margin-top: 1rem;
   padding: 0.75rem 1rem;
-  background: var(--bg-tertiary);
+  background: var(--secondary);
   border-radius: var(--radius);
   text-align: center;
 }
 
 .testCredentials p {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: var(--muted-foreground);
   font-family: var(--font-mono);
 }

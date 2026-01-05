@@ -1,28 +1,37 @@
 .main {
   min-height: 100vh;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem 2rem;
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 1.5rem;
+  height: 3.5rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--foreground);
 }
 
 .logoIcon {
-  font-size: 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.75rem;
 }
 
 .headerRight {
@@ -32,62 +41,61 @@
 }
 
 .backButton {
-  padding: 0.5rem 1rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  padding: 0.375rem 0.75rem;
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-primary);
+  color: var(--foreground);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   transition: all 0.2s;
 }
 
 .backButton:hover {
-  background: var(--bg-tertiary);
-  border-color: var(--border-accent);
+  background: var(--accent);
 }
 
 .content {
   display: flex;
-  max-width: 1200px;
+  max-width: 80rem;
   margin: 0 auto;
-  min-height: calc(100vh - 80px);
+  min-height: calc(100vh - 3.5rem);
 }
 
 .sidebar {
-  width: 240px;
-  padding: 2rem 0;
-  border-right: 1px solid var(--border-subtle);
-  background: var(--bg-secondary);
+  width: 15rem;
+  padding: 1.5rem 0;
+  border-right: 1px solid var(--border);
+  background: var(--card);
 }
 
 .nav {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding: 0 1rem;
+  padding: 0 0.75rem;
 }
 
 .navItem {
-  padding: 0.75rem 1rem;
+  padding: 0.625rem 0.75rem;
   background: transparent;
   border: none;
   border-radius: var(--radius);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   text-align: left;
   transition: all 0.2s;
 }
 
 .navItem:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--accent);
+  color: var(--foreground);
 }
 
 .navItemActive {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--accent);
+  color: var(--foreground);
   font-weight: 500;
 }
 
@@ -97,97 +105,96 @@
 }
 
 .section {
-  max-width: 600px;
+  max-width: 40rem;
 }
 
 .sectionTitle {
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: 2rem;
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .message {
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   border-radius: var(--radius);
   margin-bottom: 1.5rem;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .messageSuccess {
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
   color: var(--success);
 }
 
 .messageError {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: var(--error);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, transparent);
+  color: var(--destructive);
 }
 
 .formGroup {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .label {
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--foreground);
   margin-bottom: 0.5rem;
 }
 
 .input {
   width: 100%;
   padding: 0.75rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
+  background: var(--input-background);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-primary);
-  font-size: 0.95rem;
+  color: var(--foreground);
+  font-size: 1rem;
   font-family: var(--font-sans);
   transition: all 0.2s;
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent);
 }
 
 .readOnlyValue {
   padding: 0.75rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-secondary);
-  font-size: 0.95rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
   font-family: var(--font-mono);
 }
 
 .helpText {
-  font-size: 0.875rem;
-  color: var(--text-muted);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
   margin-top: 0.5rem;
 }
 
 .updateButton {
   margin-top: 0.75rem;
-  padding: 0.5rem 1.5rem;
-  background: var(--accent-primary);
+  padding: 0.5rem 1rem;
+  background: var(--primary);
   border: none;
   border-radius: var(--radius);
-  color: var(--text-primary);
+  color: var(--primary-foreground);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: opacity 0.2s;
 }
 
 .updateButton:hover:not(:disabled) {
-  background: var(--accent-secondary);
-  transform: translateY(-1px);
+  opacity: 0.9;
 }
 
 .updateButton:disabled {
@@ -197,33 +204,33 @@
 
 .deleteButton {
   margin-top: 0.75rem;
-  padding: 0.5rem 1.5rem;
+  padding: 0.5rem 1rem;
   background: transparent;
-  border: 1px solid var(--error);
+  border: 1px solid var(--destructive);
   border-radius: var(--radius);
-  color: var(--error);
+  color: var(--destructive);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
   transition: all 0.2s;
 }
 
 .deleteButton:hover {
-  background: var(--error);
-  color: var(--text-primary);
+  background: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
 .deleteConfirm {
   margin-top: 1rem;
   padding: 1rem;
-  background: rgba(239, 68, 68, 0.05);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--destructive) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--destructive) 20%, transparent);
   border-radius: var(--radius);
 }
 
 .deleteWarning {
-  color: var(--error);
-  font-size: 0.9rem;
+  color: var(--destructive);
+  font-size: 0.875rem;
   margin-bottom: 1rem;
 }
 
@@ -233,35 +240,34 @@
 }
 
 .cancelButton {
-  padding: 0.5rem 1.5rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
+  padding: 0.5rem 1rem;
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  color: var(--text-primary);
+  color: var(--foreground);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   transition: all 0.2s;
 }
 
 .cancelButton:hover {
-  background: var(--bg-secondary);
-  border-color: var(--border-accent);
+  background: var(--accent);
 }
 
 .confirmDeleteButton {
-  padding: 0.5rem 1.5rem;
-  background: var(--error);
+  padding: 0.5rem 1rem;
+  background: var(--destructive);
   border: none;
   border-radius: var(--radius);
-  color: var(--text-primary);
+  color: var(--destructive-foreground);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: opacity 0.2s;
 }
 
 .confirmDeleteButton:hover:not(:disabled) {
-  background: #dc2626;
+  opacity: 0.9;
 }
 
 .confirmDeleteButton:disabled {
@@ -269,11 +275,20 @@
   cursor: not-allowed;
 }
 
+/* Card component for connected accounts */
+.card {
+  padding: 1.5rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+
 .accountProvider {
   padding: 1.5rem;
-  background: var(--bg-tertiary);
+  background: var(--card);
   border-radius: var(--radius);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border);
 }
 
 .providerHeader {
@@ -289,29 +304,59 @@
   gap: 0.75rem;
 }
 
+.providerIconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius);
+  background: var(--secondary);
+}
+
 .providerName {
   font-weight: 500;
-  color: var(--text-primary);
-  font-size: 1.1rem;
+  color: var(--foreground);
+  font-size: 1rem;
+}
+
+.connectionStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.statusDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+}
+
+.statusDot.connected {
+  background: var(--success);
+}
+
+.statusDot.warning {
+  background: var(--warning);
 }
 
 .connectionDetails {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border);
 }
 
 .scopes {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.375rem;
 }
 
 .scopesLabel {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
   font-weight: 500;
 }
 
@@ -319,44 +364,43 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.125rem;
   margin: 0;
   padding: 0;
 }
 
 .scopeItem {
   font-size: 0.875rem;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   padding-left: 0;
 }
 
 .connectButton {
-  padding: 0.5rem 1rem;
-  background: var(--accent-primary);
+  padding: 0.375rem 0.75rem;
+  background: var(--primary);
   border: none;
   border-radius: var(--radius);
-  color: var(--text-primary);
+  color: var(--primary-foreground);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: opacity 0.2s;
 }
 
 .connectButton:hover {
-  background: var(--accent-secondary);
-  transform: translateY(-1px);
+  opacity: 0.9;
 }
 
 .connectionEmail {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
 }
 
 .connectionMeta {
   display: flex;
   gap: 0.5rem;
-  font-size: 0.875rem;
-  color: var(--text-muted);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
 }
 
 .needsRefresh {
@@ -364,24 +408,24 @@
 }
 
 .googleIcon {
-  width: 24px;
-  height: 24px;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .disconnectButton {
-  padding: 0.5rem 1rem;
+  padding: 0.375rem 0.75rem;
   background: transparent;
-  border: 1px solid var(--error);
+  border: 1px solid var(--destructive);
   border-radius: var(--radius);
-  color: var(--error);
+  color: var(--destructive);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   transition: all 0.2s;
 }
 
 .disconnectButton:hover {
-  background: var(--error);
-  color: var(--text-primary);
+  background: var(--destructive);
+  color: var(--destructive-foreground);
 }
 
 .loading {
@@ -389,5 +433,28 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
+}
+
+@media (max-width: 768px) {
+  .content {
+    flex-direction: column;
+  }
+  
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 0;
+  }
+  
+  .nav {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 0.5rem;
+  }
+  
+  .navItem {
+    white-space: nowrap;
+  }
 }

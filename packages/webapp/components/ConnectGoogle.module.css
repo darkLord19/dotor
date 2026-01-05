@@ -7,19 +7,19 @@
 }
 
 .card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: calc(var(--radius) + 4px);
-  padding: 2.5rem;
-  max-width: 480px;
+  padding: 2rem;
+  max-width: 28rem;
   text-align: center;
 }
 
 .iconWrapper {
-  width: 80px;
-  height: 80px;
+  width: 4rem;
+  height: 4rem;
   margin: 0 auto 1.5rem;
-  background: var(--bg-tertiary);
+  background: var(--secondary);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -27,20 +27,20 @@
 }
 
 .icon {
-  width: 48px;
-  height: 48px;
+  width: 2.5rem;
+  height: 2.5rem;
 }
 
 .title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--foreground);
+  margin-bottom: 0.75rem;
 }
 
 .description {
-  color: var(--text-secondary);
-  font-size: 0.9375rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
   line-height: 1.6;
   margin-bottom: 1.5rem;
 }
@@ -51,30 +51,30 @@
   margin: 0 0 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .permissions li {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-tertiary);
+  padding: 0.625rem 0.875rem;
+  background: var(--secondary);
   border-radius: var(--radius);
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   font-size: 0.875rem;
 }
 
 .permissionIcon {
-  font-size: 1.25rem;
+  font-size: 1rem;
 }
 
 .error {
-  color: var(--error);
+  color: var(--destructive);
   font-size: 0.875rem;
   margin-bottom: 1rem;
   padding: 0.75rem;
-  background: rgba(239, 68, 68, 0.1);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
   border-radius: var(--radius);
 }
 
@@ -84,37 +84,36 @@
   justify-content: center;
   gap: 0.75rem;
   width: 100%;
-  padding: 1rem 1.5rem;
-  background: var(--accent-gradient);
+  padding: 0.75rem 1.5rem;
+  background: var(--primary);
   border: none;
   border-radius: var(--radius);
-  color: white;
+  color: var(--primary-foreground);
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 
 .button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+  opacity: 0.9;
 }
 
 .button:disabled {
-  opacity: 0.7;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .googleIcon {
-  width: 20px;
-  height: 20px;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -127,8 +126,8 @@
 
 .privacy {
   margin-top: 1.5rem;
-  font-size: 0.8125rem;
-  color: var(--text-muted);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
 }
 
 @media (max-width: 480px) {
@@ -137,17 +136,17 @@
   }
   
   .iconWrapper {
-    width: 64px;
-    height: 64px;
+    width: 3.5rem;
+    height: 3.5rem;
   }
   
   .icon {
-    width: 36px;
-    height: 36px;
+    width: 2rem;
+    height: 2rem;
   }
   
   .title {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
   }
 }
 

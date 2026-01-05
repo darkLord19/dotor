@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--background) 50%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -13,11 +13,11 @@
 }
 
 .modal {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 2rem;
-  max-width: 500px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 4px);
+  padding: 1.5rem;
+  max-width: 28rem;
   width: 90%;
   position: relative;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
@@ -25,45 +25,45 @@
 
 .closeButton {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 0.75rem;
+  right: 0.75rem;
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   cursor: pointer;
   padding: 0.5rem;
 }
 
 .closeButton:hover {
-  color: var(--text-primary);
+  color: var(--foreground);
 }
 
 .title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  color: var(--text-primary);
+  font-size: 1.125rem;
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+  color: var(--foreground);
 }
 
 .content {
-  color: var(--text-secondary);
-  font-size: 0.9375rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
   line-height: 1.6;
 }
 
 .steps {
-  margin: 1.5rem 0;
-  padding-left: 1.5rem;
+  margin: 1rem 0;
+  padding-left: 1.25rem;
 }
 
 .steps li {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .downloadButton {
   display: inline-block;
   background: var(--primary);
-  color: white;
+  color: var(--primary-foreground);
   padding: 0.75rem 1.5rem;
   border-radius: var(--radius);
   text-decoration: none;
@@ -71,6 +71,7 @@
   margin-top: 1rem;
   width: 100%;
   text-align: center;
+  transition: opacity 0.2s ease;
 }
 
 .downloadButton:hover {
