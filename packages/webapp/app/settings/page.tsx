@@ -14,6 +14,16 @@ interface Connection {
   needsRefresh: boolean;
 }
 
+interface WhatsAppStatus {
+  connected: boolean;
+  status: string;
+  lastSeenAt: string | null;
+  lastSyncAt: string | null;
+  syncCount: number;
+  browserRunning: boolean;
+  isLinked: boolean;
+}
+
 type SettingsSection = 'profile' | 'connected-accounts';
 
 export default function SettingsPage() {
@@ -22,6 +32,13 @@ export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // WhatsApp state
+  const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
+  const [qrScreenshot, setQrScreenshot] = useState<string | null>(null);
+  const [qrPolling, setQrPolling] = useState(false);
   
   // Profile form state
   const [name, setName] = useState('');
@@ -61,6 +78,18 @@ export default function SettingsPage() {
           const connectionsData = await connectionsResponse.json();
           setConnections(connectionsData);
         }
+
+        // Fetch WhatsApp status
+        const waResponse = await fetch(`${backendUrl}/wa/status`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        });
+        
+        if (waResponse.ok) {
+          const waData = await waResponse.json();
+          setWhatsappStatus(waData);
+        }
       } catch (error) {
         console.error('Failed to check auth:', error);
         router.push('/login');
@@ -71,6 +100,104 @@ export default function SettingsPage() {
 
     checkAuth();
   }, [router]);
+
+  // Poll for QR screenshot when browser is running but not linked
+  useEffect(() => {
+    // Don't poll if browser not running
+    if (!whatsappStatus?.browserRunning) {
+      setQrScreenshot(null);
+      setQrPolling(false);
+      return;
+    }
+    
+    // Don't poll if already linked (live status from browser)
+    if (whatsappStatus?.isLinked) {
+      setQrScreenshot(null);
+      setQrPolling(false);
+      return;
+    }
+
+    // Start polling for screenshot
+    setQrPolling(true);
+    let cancelled = false;
+
+    const pollScreenshot = async () => {
+      if (cancelled) return;
+      
+      const backendUrl = getBackendUrl();
+      
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session || cancelled) return;
+
+        // First check status to see if already linked
+        const statusResponse = await fetch(`${backendUrl}/wa/status`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+        
+        if (statusResponse.ok) {
+          const status = await statusResponse.json();
+          setWhatsappStatus(status);
+          
+          // Stop polling if linked (live) or browser stopped
+          if (status.isLinked || !status.browserRunning) {
+            setQrScreenshot(null);
+            setQrPolling(false);
+            cancelled = true;
+            return;
+          }
+        }
+
+        if (cancelled) return;
+
+        // Only fetch screenshot if still not linked
+        const screenshotResponse = await fetch(`${backendUrl}/wa/screenshot`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (cancelled) return;
+
+        if (screenshotResponse.ok) {
+          const data = await screenshotResponse.json();
+          
+          if (data.linked) {
+            // Browser is now linked, stop polling
+            setQrScreenshot(null);
+            setQrPolling(false);
+            cancelled = true;
+            return;
+          }
+          
+          if (data.image && !cancelled) {
+            setQrScreenshot(`data:${data.mimeType};base64,${data.image}`);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch screenshot:', err);
+      }
+    };
+
+    // Poll immediately, then every 2 seconds
+    pollScreenshot();
+    const interval = setInterval(() => {
+      if (!cancelled) {
+        pollScreenshot();
+      }
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      setQrScreenshot(null);
+      setQrPolling(false);
+    };
+  }, [whatsappStatus?.browserRunning, whatsappStatus?.isLinked]);
 
   const handleUpdateName = async () => {
     setUpdating(true);
@@ -266,6 +393,172 @@ export default function SettingsPage() {
       }
     } catch (error) {
       console.error('Failed to disconnect:', error);
+    }
+  };
+
+  // WhatsApp handlers
+  const handleWhatsAppConnect = async () => {
+    const backendUrl = getBackendUrl();
+    setWhatsappLoading(true);
+    setWhatsappError(null);
+    
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+      
+      const response = await fetch(`${backendUrl}/wa/browser/spawn`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to start browser');
+      }
+      
+      // Refresh status
+      const statusResponse = await fetch(`${backendUrl}/wa/status`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      
+      if (statusResponse.ok) {
+        setWhatsappStatus(await statusResponse.json());
+      }
+    } catch (error: any) {
+      setWhatsappError(error.message || 'Failed to connect WhatsApp');
+    } finally {
+      setWhatsappLoading(false);
+    }
+  };
+
+  const handleWhatsAppDisconnect = async () => {
+    const backendUrl = getBackendUrl();
+    setWhatsappLoading(true);
+    setWhatsappError(null);
+    
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+      
+      const response = await fetch(`${backendUrl}/wa/disconnect`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to disconnect');
+      }
+      
+      setWhatsappStatus({
+        connected: false,
+        status: 'disconnected',
+        lastSeenAt: null,
+        lastSyncAt: null,
+        syncCount: 0,
+        browserRunning: false,
+        isLinked: false,
+      });
+    } catch (error: any) {
+      setWhatsappError(error.message || 'Failed to disconnect WhatsApp');
+    } finally {
+      setWhatsappLoading(false);
+    }
+  };
+
+  const handleWhatsAppStop = async () => {
+    const backendUrl = getBackendUrl();
+    setWhatsappLoading(true);
+    
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+      
+      await fetch(`${backendUrl}/wa/browser/stop`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      
+      // Refresh status
+      const statusResponse = await fetch(`${backendUrl}/wa/status`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      
+      if (statusResponse.ok) {
+        setWhatsappStatus(await statusResponse.json());
+      }
+    } catch (error) {
+      console.error('Failed to stop browser:', error);
+    } finally {
+      setWhatsappLoading(false);
+    }
+  };
+
+  const handleWhatsAppSync = async () => {
+    const backendUrl = getBackendUrl();
+    setWhatsappLoading(true);
+    setWhatsappError(null);
+    
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+      
+      const response = await fetch(`${backendUrl}/wa/sync/trigger`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to trigger sync');
+      }
+      
+      // Poll for status update after a few seconds
+      setTimeout(async () => {
+        const statusResponse = await fetch(`${backendUrl}/wa/status`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+        
+        if (statusResponse.ok) {
+          setWhatsappStatus(await statusResponse.json());
+        }
+        setWhatsappLoading(false);
+      }, 5000);
+    } catch (error: any) {
+      setWhatsappError(error.message || 'Failed to sync');
+      setWhatsappLoading(false);
     }
   };
 
@@ -512,6 +805,148 @@ export default function SettingsPage() {
                     </div>
                   );
                 })()}
+              </div>
+
+              {/* WhatsApp Account */}
+              <div className={`${styles.accountProvider} ${styles.accountProviderWhatsApp}`}>
+                <div className={styles.providerHeader}>
+                  <div className={styles.providerInfo}>
+                    <svg className={styles.whatsappIcon} viewBox="0 0 24 24" width="24" height="24">
+                      <path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                    </svg>
+                    <span className={styles.providerName}>WhatsApp</span>
+                  </div>
+                  {whatsappStatus?.connected ? (
+                    <button
+                      onClick={handleWhatsAppDisconnect}
+                      disabled={whatsappLoading}
+                      className={styles.disconnectButton}
+                    >
+                      {whatsappLoading ? 'Processing...' : 'Disconnect'}
+                    </button>
+                  ) : whatsappStatus?.browserRunning ? (
+                    <button
+                      onClick={handleWhatsAppStop}
+                      disabled={whatsappLoading}
+                      className={styles.stopButton}
+                    >
+                      {whatsappLoading ? 'Processing...' : 'Disconnect'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleWhatsAppConnect}
+                      disabled={whatsappLoading}
+                      className={styles.connectButton}
+                    >
+                      {whatsappLoading ? 'Starting...' : 'Connect'}
+                    </button>
+                  )}
+                </div>
+                
+                {whatsappError && (
+                  <div className={styles.waError}>{whatsappError}</div>
+                )}
+                
+                {whatsappStatus?.browserRunning && !whatsappStatus?.isLinked && (
+                  <div className={styles.waQrPrompt}>
+                    <div className={styles.waQrHeader}>
+                      <span className={styles.waQrIcon}>📱</span>
+                      <div className={styles.waQrText}>
+                        <p><strong>Scan QR Code</strong></p>
+                        <p>Open WhatsApp on your phone → Settings → Linked Devices → Link a Device</p>
+                      </div>
+                    </div>
+                    
+                    {qrScreenshot ? (
+                      <div className={styles.waQrImageContainer}>
+                        <img 
+                          src={qrScreenshot} 
+                          alt="WhatsApp QR Code" 
+                          className={styles.waQrImage}
+                        />
+                        {qrPolling && (
+                          <div className={styles.waQrRefreshing}>
+                            <span className={styles.waQrSpinner} />
+                            Refreshing...
+                          </div>
+                        )}
+                      </div>
+                    ) : qrPolling ? (
+                      <div className={styles.waQrLoading}>
+                        <span className={styles.waQrSpinner} />
+                        Loading QR code...
+                      </div>
+                    ) : (
+                      <div className={styles.waQrLoading}>
+                        <span className={styles.waQrSpinner} />
+                        Starting browser...
+                      </div>
+                    )}
+                    
+                    <p className={styles.waQrNote}>
+                      Screenshot refreshes every 2 seconds. Scan with your phone to connect.
+                    </p>
+                  </div>
+                )}
+                
+                {whatsappStatus?.connected && (
+                  <div className={styles.connectionDetails}>
+                    <div className={styles.waStatus}>
+                      <span className={styles.waStatusDot} />
+                      <span>Connected</span>
+                    </div>
+                    <div className={styles.waSyncInfo}>
+                      {whatsappStatus.lastSyncAt && (
+                        <div className={styles.waSyncRow}>
+                          <span className={styles.waSyncLabel}>Last sync:</span>
+                          <span>{new Date(whatsappStatus.lastSyncAt).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {whatsappStatus.syncCount > 0 && (
+                        <div className={styles.waSyncRow}>
+                          <span className={styles.waSyncLabel}>Total syncs:</span>
+                          <span>{whatsappStatus.syncCount}</span>
+                        </div>
+                      )}
+                      <div className={styles.waSyncRow}>
+                        <span className={styles.waSyncLabel}>Auto-sync:</span>
+                        <span>Every 30 minutes</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleWhatsAppSync}
+                      disabled={whatsappLoading}
+                      className={styles.syncButton}
+                    >
+                      {whatsappLoading ? 'Syncing...' : '🔄 Sync Now'}
+                    </button>
+                    {whatsappStatus.lastSeenAt && (
+                      <div className={styles.connectionMeta}>
+                        <span>Last activity: {new Date(whatsappStatus.lastSeenAt).toLocaleString()}</span>
+                      </div>
+                    )}
+                    <div className={styles.scopes}>
+                      <span className={styles.scopesLabel}>Features:</span>
+                      <ul className={styles.scopesList}>
+                        <li className={styles.scopeItem}>💬 Message sync (while browser active)</li>
+                        <li className={styles.scopeItem}>🔄 Auto-sync every 30 minutes</li>
+                        <li className={styles.scopeItem}>👀 Read-only access</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+                
+                {!whatsappStatus?.connected && !whatsappStatus?.browserRunning && (
+                  <div className={styles.waInfo}>
+                    <p>Connect your WhatsApp account to sync messages.</p>
+                    <ul className={styles.waInfoList}>
+                      <li>✅ Official QR login</li>
+                      <li>✅ No automation libraries</li>
+                      <li>✅ Messages sync only while browser is active</li>
+                      <li>⚠️ One browser session at a time</li>
+                    </ul>
+                  </div>
+                )}
               </div>
             </section>
           )}

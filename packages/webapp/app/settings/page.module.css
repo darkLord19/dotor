@@ -368,6 +368,11 @@
   height: 24px;
 }
 
+.whatsappIcon {
+  width: 24px;
+  height: 24px;
+}
+
 .disconnectButton {
   padding: 0.5rem 1rem;
   background: transparent;
@@ -379,9 +384,35 @@
   transition: all 0.2s;
 }
 
-.disconnectButton:hover {
+.disconnectButton:hover:not(:disabled) {
   background: var(--error);
   color: var(--text-primary);
+}
+
+.disconnectButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stopButton {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  color: var(--warning);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.stopButton:hover:not(:disabled) {
+  background: var(--warning);
+  color: var(--bg-primary);
+}
+
+.stopButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .loading {
@@ -390,4 +421,212 @@
   align-items: center;
   min-height: 100vh;
   color: var(--text-secondary);
+}
+
+/* WhatsApp specific styles */
+.accountProviderWhatsApp {
+  margin-top: 1.5rem;
+}
+
+.waError {
+  padding: 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius);
+  color: var(--error);
+  font-size: 0.875rem;
+  margin-top: 1rem;
+}
+
+.waQrPrompt {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(37, 211, 102, 0.1);
+  border: 1px solid rgba(37, 211, 102, 0.3);
+  border-radius: var(--radius);
+  margin-top: 1rem;
+}
+
+.waQrHeader {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.waQrIcon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.waQrText {
+  flex: 1;
+}
+
+.waQrText p {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.waQrText p:last-child {
+  margin-bottom: 0;
+}
+
+.waQrImageContainer {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  max-height: 400px;
+  overflow: hidden;
+}
+
+.waQrImage {
+  max-width: 100%;
+  max-height: 380px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.waQrLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 3rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.waQrRefreshing {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.waQrSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.waQrNote {
+  font-size: 0.8rem !important;
+  color: var(--text-muted) !important;
+  font-style: italic;
+  text-align: center;
+  margin: 0;
+}
+
+.waStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--success);
+  font-weight: 500;
+}
+
+.waStatusDot {
+  width: 8px;
+  height: 8px;
+  background: var(--success);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.waInfo {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+}
+
+.waInfo p {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.waInfoList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.waInfoList li {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* Sync info styles */
+.waSyncInfo {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
+.waSyncRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+}
+
+.waSyncRow:not(:last-child) {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.waSyncLabel {
+  color: var(--text-muted);
+}
+
+.syncButton {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.syncButton:hover:not(:disabled) {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+.syncButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

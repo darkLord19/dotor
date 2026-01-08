@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  wa-browser-server:
+    build: .
+    container_name: wa-browser-server
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+      - "5900:5900"  # VNC for debugging (optional)
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - HOST=0.0.0.0
+      - BACKEND_API_URL=${BACKEND_API_URL}
+      - API_SECRET_KEY=${API_SECRET_KEY}
+      - IDLE_TIMEOUT_MS=600000
+      - ENABLE_VNC=${ENABLE_VNC:-false}
+    volumes:
+      # Persist Chrome profiles
+      - wa-profiles:/data/profile
+    # Limit resources for e2-micro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 768M
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+    # Required for Chrome
+    shm_size: '256m'
+    security_opt:
+      - seccomp:unconfined
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  wa-profiles:
+    driver: local
