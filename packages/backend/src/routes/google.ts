@@ -29,7 +29,7 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
 
       const { data, error } = await supabase
         .from("connections")
-        .select("type, email, scopes, created_at, token_expires_at")
+        .select("type, email, scopes, created_at, token_expires_at, sync_config")
         .eq("user_id", authRequest.userId);
 
       if (error) {
@@ -43,6 +43,8 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
         scopes: conn.scopes,
         connectedAt: conn.created_at,
         needsRefresh: new Date(conn.token_expires_at) < new Date(),
+        // @ts-ignore
+        syncConfig: conn.sync_config,
       }));
 
       return connections;

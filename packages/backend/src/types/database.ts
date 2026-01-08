@@ -130,6 +130,9 @@ export type Database = {
           id: string
           user_id: string
           messages: Json
+          source: string
+          external_id: string | null
+          title: string | null
           created_at: string
           updated_at: string
         }
@@ -137,6 +140,9 @@ export type Database = {
           id?: string
           user_id: string
           messages?: Json
+          source?: string
+          external_id?: string | null
+          title?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -144,6 +150,9 @@ export type Database = {
           id?: string
           user_id?: string
           messages?: Json
+          source?: string
+          external_id?: string | null
+          title?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -179,48 +188,6 @@ export type Database = {
           sync_count?: number
           created_at?: string
           updated_at?: string
-        }
-        Relationships: []
-      }
-      whatsapp_messages: {
-        Row: {
-          id: string
-          user_id: string
-          message_id: string
-          chat_id: string
-          chat_name: string | null
-          sender: string
-          content: string
-          message_timestamp: string
-          is_from_me: boolean
-          received_at: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          message_id: string
-          chat_id: string
-          chat_name?: string | null
-          sender: string
-          content: string
-          message_timestamp: string
-          is_from_me: boolean
-          received_at: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          message_id?: string
-          chat_id?: string
-          chat_name?: string | null
-          sender?: string
-          content?: string
-          message_timestamp?: string
-          is_from_me?: boolean
-          received_at?: string
-          created_at?: string
         }
         Relationships: []
       }

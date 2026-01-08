@@ -5,10 +5,8 @@ import { webhookRoutes } from './routes/webhook.js';
 import { healthRoutes } from './routes/health.js';
 import { syncRoutes } from './routes/sync.js';
 import { screenshotRoutes } from './routes/screenshot.js';
-import { syncScheduler } from './lib/sync-scheduler.js';
-import { screenshotManager } from './lib/screenshot-manager.js';
-import { browserManager } from './lib/browser-manager.js';
-import { linkDetector } from './lib/link-detector.js';
+import { configRoutes } from './routes/config.js';
+import { whatsAppClient } from './lib/whatsapp-client.js';
 
 const PORT = parseInt(process.env.PORT ?? '3002', 10);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -61,6 +59,7 @@ async function buildServer() {
   await fastify.register(webhookRoutes, { prefix: '/webhook' });
   await fastify.register(syncRoutes, { prefix: '/sync' });
   await fastify.register(screenshotRoutes, { prefix: '/screenshot' });
+  await fastify.register(configRoutes, { prefix: '/wa' });
 
   return fastify;
 }
@@ -68,28 +67,20 @@ async function buildServer() {
 async function start() {
   const server = await buildServer();
 
-  // Start the sync scheduler
-  syncScheduler.start();
-
-  // Set up link detection notification handler ONCE at startup
-  // This ensures we don't miss the event
-  linkDetector.on('notify-backend', async () => {
-    console.log('[Server] notify-backend event received!');
-    const browserState = browserManager.getState();
-    const userId = browserState.userId;
-    
-    console.log('[Server] browserState:', JSON.stringify(browserState));
+  // Set up WhatsApp client event handlers
+  whatsAppClient.on('ready', async () => {
+    console.log('[Server] WhatsApp Client ready!');
+    const state = whatsAppClient.getState();
+    const userId = state.userId;
     
     if (!userId) {
-      console.error('[Server] No userId available for backend notification');
+      console.error('[Server] No userId available on ready event');
       return;
     }
     
     try {
       const url = `${BACKEND_URL}/wa/linked`;
-      console.log('[Server] WhatsApp linked, notifying backend for user:', userId);
-      console.log('[Server] Calling URL:', url);
-      console.log('[Server] API Key present:', !!WA_API_KEY);
+      console.log('[Server] Notifying backend about linkage for user:', userId);
       
       const response = await fetch(url, {
         method: 'POST',
@@ -97,47 +88,67 @@ async function start() {
           'Content-Type': 'application/json',
           'X-API-Key': WA_API_KEY,
         },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ 
+          userId,
+          linked: true,
+          timestamp: new Date().toISOString()
+        }),
       });
-      
-      console.log('[Server] Response status:', response.status);
-      
+
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Server] Failed to notify backend:', errorText);
+        console.error(`[Server] Failed to notify backend: ${response.status} ${response.statusText}`);
       } else {
-        const result = await response.json();
-        console.log('[Server] Backend notified of link successfully:', JSON.stringify(result));
+        console.log('[Server] Backend notified successfully');
+        
+        // Fetch and upload contacts immediately
+        await syncContacts(userId);
       }
-    } catch (err) {
-      console.error('[Server] Failed to notify backend:', err);
+    } catch (error) {
+      console.error('[Server] Error notifying backend:', error);
     }
   });
 
-  // Start screenshot capture and link detection when browser spawns
-  browserManager.on('browser:spawn', ({ userId }) => {
-    console.log('[Server] Browser spawned for user:', userId);
-    screenshotManager.startAutoCapture();
-    linkDetector.start();
-  });
-
-  // Stop screenshot capture when browser exits or links
-  browserManager.on('browser:exit', () => {
-    screenshotManager.clear();
-    linkDetector.reset();
-  });
-  browserManager.on('browser:linked', ({ linked }) => {
-    if (linked) {
-      screenshotManager.stopAutoCapture();
-    }
+  whatsAppClient.on('disconnected', async () => {
+    console.log('[Server] WhatsApp Client disconnected');
+    // We could notify backend here too
   });
 
   try {
     await server.listen({ port: PORT, host: HOST });
-    server.log.info(`WA Browser Server listening on ${HOST}:${PORT}`);
+    console.log(`[Server] WA Browser Server listening on ${HOST}:${PORT}`);
   } catch (err) {
     server.log.error(err);
     process.exit(1);
+  }
+}
+
+async function syncContacts(userId: string) {
+  try {
+    console.log('[Server] Syncing contacts...');
+    const contacts = await whatsAppClient.getContacts();
+    
+    const formattedContacts = contacts.map(c => ({
+      wa_id: c.id._serialized,
+      name: c.name || c.pushname || c.shortName,
+      short_name: c.shortName,
+      pushname: c.pushname,
+      is_business: c.isBusiness,
+      is_group: c.isGroup,
+      // profile_pic_url: can fetch separately but expensive
+    }));
+
+    const url = `${BACKEND_URL}/wa/contacts`;
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': WA_API_KEY,
+      },
+      body: JSON.stringify({ userId, contacts: formattedContacts }),
+    });
+    console.log(`[Server] Synced ${contacts.length} contacts`);
+  } catch (error) {
+    console.error('[Server] Failed to sync contacts:', error);
   }
 }
 

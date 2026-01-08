@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { browserManager } from '../lib/browser-manager.js';
-import { linkDetector } from '../lib/link-detector.js';
+import { whatsAppClient } from '../lib/whatsapp-client.js';
 import { verifyApiKey } from '../lib/auth.js';
 
 const SpawnSchema = z.object({
@@ -26,21 +25,14 @@ export async function browserRoutes(fastify: FastifyInstance) {
    * Get current browser state
    */
   fastify.get('/status', async (request, reply) => {
-    const state = browserManager.getState();
-    const isLinked = linkDetector.getStatus() || state.isLinked;
-    
-    // Double-check if browser is actually running (handles macOS fork case)
-    const actuallyRunning = state.isRunning ? await browserManager.isActuallyRunning() : false;
-    
+    const state = whatsAppClient.getState();
     return {
-      isRunning: actuallyRunning,
+      isRunning: state.isInitialized,
       userId: state.userId,
-      isLinked,
-      startedAt: state.startedAt?.toISOString() ?? null,
-      lastActivityAt: state.lastActivityAt?.toISOString() ?? null,
-      idleTimeMs: state.lastActivityAt 
-        ? Date.now() - state.lastActivityAt.getTime() 
-        : null,
+      isLinked: state.isLinked,
+      startedAt: null, // Legacy field
+      lastActivityAt: null,
+      idleTimeMs: 0,
     };
   });
 
@@ -55,16 +47,14 @@ export async function browserRoutes(fastify: FastifyInstance) {
     }
 
     const { userId } = body.data;
-    const result = await browserManager.spawn(userId);
-
-    if (!result.success) {
-      return reply.code(409).send({ error: result.error });
-    }
+    
+    // No response needed, init is async
+    whatsAppClient.initialize(userId);
 
     return { 
       success: true, 
-      message: 'Browser spawned',
-      state: browserManager.getState(),
+      message: 'Browser starting',
+      state: whatsAppClient.getState(),
     };
   });
 
@@ -73,17 +63,10 @@ export async function browserRoutes(fastify: FastifyInstance) {
    * Stop the browser instance
    */
   fastify.post('/stop', async (request, reply) => {
-    const body = KillSchema.safeParse(request.body);
-    if (!body.success) {
-      return reply.code(400).send({ error: 'Invalid request', details: body.error.issues });
-    }
-
-    const { userId } = body.data;
-    const result = await browserManager.kill(userId);
-
-    if (!result.success) {
-      return reply.code(400).send({ error: result.error });
-    }
+    // We don't really use the userId for stopping anymore since it's a singleton
+    // but we can check if it matches
+    const state = whatsAppClient.getState();
+    await whatsAppClient.destroy();
 
     return { success: true, message: 'Browser stopped' };
   });
@@ -93,16 +76,7 @@ export async function browserRoutes(fastify: FastifyInstance) {
    * Record user activity (extend idle timeout)
    */
   fastify.post('/activity', async (request, reply) => {
-    browserManager.recordActivity();
+    // Legacy support
     return { success: true };
-  });
-
-  /**
-   * DELETE /browser/force
-   * Force kill browser (admin only)
-   */
-  fastify.delete('/force', async (request, reply) => {
-    await browserManager.forceKill();
-    return { success: true, message: 'Browser force killed' };
   });
 }

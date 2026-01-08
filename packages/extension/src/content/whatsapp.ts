@@ -66,8 +66,136 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       });
     }
   }
+
+  // List available chats from the side panel
+  if (message.type === 'LIST_CHATS') {
+    listRecentChats()
+      .then(chats => {
+        console.log(`[Dotor] Found ${chats.length} recent chats`);
+        sendResponse({ chats });
+      })
+      .catch(error => {
+        console.error('[Dotor] List chats failed:', error);
+        sendResponse({ chats: [], error: String(error) });
+      });
+    return true;
+  }
+
+  // Sync specific conversations sequentially with delays
+  if (message.type === 'SYNC_CHATS') {
+    const chatNames: string[] = message.chatNames || [];
+    console.log(`[Dotor] specific sync requested for ${chatNames.length} chats`);
+    
+    syncSpecificChats(chatNames)
+      .then(results => {
+        sendResponse({ results });
+      })
+      .catch(error => {
+        sendResponse({ error: String(error) });
+      });
+    return true;
+  }
+
   return true;
 });
+
+// Listen for commands from the external browser controller (via DOM events)
+// This allows the browser server to trigger actions without using chrome.runtime
+window.addEventListener('DOTOR_COMMAND', async (event) => {
+  const customEvent = event as CustomEvent;
+  const { type, id, payload } = customEvent.detail || {};
+  
+  console.log(`[Dotor] Received DOM command: ${type}`);
+  
+  let result = null;
+  let error = null;
+  
+  try {
+    if (type === 'LIST_CHATS') {
+      result = await listRecentChats();
+    } else if (type === 'SYNC_CHATS') {
+      const chatNames = payload?.chatNames || [];
+      result = await syncSpecificChats(chatNames);
+    } else {
+      error = `Unknown command: ${type}`;
+    }
+  } catch (err) {
+    error = String(err);
+  }
+  
+  // Send response back
+  const responseEvent = new CustomEvent(`DOTOR_RESPONSE_${id}`, {
+    detail: { result, error }
+  });
+  window.dispatchEvent(responseEvent);
+});
+
+/**
+ * List recent chats visible in the side panel
+ */
+async function listRecentChats(): Promise<{name: string}[]> {
+  const pane = document.querySelector(SELECTORS.sidePanel);
+  if (!pane) {
+    console.warn('[Dotor] Side panel not found');
+    return [];
+  }
+
+  // Try to find chat titles using common attributes
+  // Looking for spans with title attribute is often reliable for chat names
+  const potentialTitles = Array.from(pane.querySelectorAll('span[dir="auto"][title]'));
+  
+  const chats = potentialTitles
+    .map(el => ({
+      name: el.getAttribute('title') || el.textContent || ''
+    }))
+    .filter(c => c.name && c.name.trim().length > 0);
+
+  // Deduplicate by name
+  const uniqueChats = new Map();
+  chats.forEach(c => uniqueChats.set(c.name, c));
+  
+  return Array.from(uniqueChats.values());
+}
+
+/**
+ * Sync specific chats by searching and scraping them one by one
+ * Includes random delays to behave like a human
+ */
+async function syncSpecificChats(chatNames: string[]) {
+  const results = [];
+  
+  for (const name of chatNames) {
+    try {
+      console.log(`[Dotor] Syncing chat: ${name}`);
+      // Reuse search logic to open the chat
+      const snippets = await performSearchAndScrape(name);
+      
+      results.push({
+        name,
+        snippets,
+        success: true
+      });
+
+      // Random delay between 5s and 15s to be stealthy
+      // Only delay if there are more chats to process
+      if (chatNames.indexOf(name) < chatNames.length - 1) {
+        const delay = 5000 + Math.random() * 10000;
+        console.log(`[Dotor] Waiting ${Math.round(delay/1000)}s before next chat...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+    } catch (error) {
+      console.error(`[Dotor] Failed to sync chat ${name}:`, error);
+      results.push({
+        name,
+        error: String(error),
+        success: false
+      });
+    }
+  }
+  
+  return results;
+}
 
 /**
  * Perform search in WhatsApp Web and scrape results

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { browserManager } from './browser-manager.js';
 import { forwardToBackend } from './backend-client.js';
+import { whatsAppController } from './whatsapp-controller.js';
 
 export interface SyncState {
   lastSyncAt: Date | null;
@@ -27,6 +28,7 @@ export class SyncScheduler extends EventEmitter {
 
   // Pending sync request that content script should pick up
   private pendingSyncRequest: { id: string; requestedAt: Date } | null = null;
+  private monitoredChats: string[] = [];
 
   constructor() {
     super();
@@ -40,6 +42,11 @@ export class SyncScheduler extends EventEmitter {
 
   getPendingSyncRequest(): { id: string; requestedAt: Date } | null {
     return this.pendingSyncRequest;
+  }
+
+  setMonitoredChats(chats: string[]) {
+    this.monitoredChats = chats;
+    console.log(`[SyncScheduler] Setup to monitor ${chats.length} chats`);
   }
 
   /**
@@ -96,23 +103,90 @@ export class SyncScheduler extends EventEmitter {
     }
 
     const syncId = `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    this.pendingSyncRequest = {
-      id: syncId,
-      requestedAt: new Date(),
-    };
-
     this.state.isSyncing = true;
     this.emit('sync:requested', { syncId, manual });
-    console.log(`[SyncScheduler] Sync requested: ${syncId} (manual: ${manual})`);
-
-    // Timeout for sync completion (5 min max)
-    setTimeout(() => {
-      if (this.pendingSyncRequest?.id === syncId) {
-        this.completeSyncRequest(syncId, false, 'Sync timed out');
-      }
-    }, 300000);
+    
+    // Launch the sync process (async)
+    this.performSync(syncId).catch(err => {
+      console.error(`[SyncScheduler] Sync execution failed:`, err);
+      this.completeSyncRequest(syncId, false, String(err));
+    });
 
     return { success: true, syncId };
+  }
+
+  /**
+   * Execute the actual sync logic via WhatsAppController
+   */
+  private async performSync(syncId: string): Promise<void> {
+    const browserState = browserManager.getState();
+    
+    console.log(`[SyncScheduler] Performing sync ${syncId} for chats: ${this.monitoredChats.length || 'ALL (top 5)'}`);
+    
+    let results;
+    if (this.monitoredChats.length > 0) {
+      results = await whatsAppController.syncChats(this.monitoredChats);
+    } else {
+      // Default behavior: sync top 5 recent chats
+      const recents = await whatsAppController.getRecentChats();
+      const top5 = recents.slice(0, 5).map(c => c.name);
+      results = await whatsAppController.syncChats(top5);
+    }
+
+    // Process results
+    await this.processSyncResults(results, browserState.userId!);
+    
+    this.completeSyncRequest(syncId, true);
+  }
+
+  /**
+   * Process results and send to backend
+   */
+  private async processSyncResults(results: any[], userId: string): Promise<void> {
+    const messages = [];
+    
+    for (const res of results) {
+      if (!res.success || !res.snippets) continue;
+      
+      const chatName = res.name;
+      
+      for (const snippet of res.snippets) {
+        // Parse snippet: "[Timestamp] Sender: Content" or "[ChatName] [Timestamp] Sender: Content"
+        // The extension adds [ChatName] prefix to some
+        let cleanSnippet = snippet;
+        if (snippet.startsWith(`[${chatName}] `)) {
+          cleanSnippet = snippet.substring(chatName.length + 3);
+        }
+        
+        // Match: [12:00, 1/1/2026] Sender: Message
+        const match = cleanSnippet.match(/^\[(.*?)\] (.*?): (.*)$/);
+        
+        if (match) {
+          const timestampStr = match[1];
+          const sender = match[2];
+          const content = match[3];
+          
+          messages.push({
+            id: Buffer.from(`${chatName}-${timestampStr}-${content.substring(0, 20)}`).toString('base64'),
+            chatId: Buffer.from(chatName).toString('base64'), // Use name as ID for now
+            chatName: chatName,
+            sender: sender,
+            content: content,
+            timestamp: new Date().toISOString(), // We should parse timestampStr but format varies
+            isFromMe: sender === 'You', // Approximation
+          });
+        }
+      }
+    }
+
+    if (messages.length > 0) {
+      await forwardToBackend('/wa/sync/batch', {
+        userId,
+        messages,
+        receivedAt: new Date().toISOString()
+      });
+      console.log(`[SyncScheduler] Sent ${messages.length} messages to backend`);
+    }
   }
 
   /**

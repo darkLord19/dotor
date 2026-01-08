@@ -30,6 +30,21 @@ const MessageBatchSchema = z.object({
   receivedAt: z.string(),
 });
 
+const ContactSchema = z.object({
+  userId: z.string().uuid(),
+  contacts: z.array(
+    z.object({
+      wa_id: z.string(),
+      name: z.string().optional().nullable(),
+      short_name: z.string().optional().nullable(),
+      pushname: z.string().optional().nullable(),
+      is_business: z.boolean().optional(),
+      is_group: z.boolean().optional(),
+      profile_pic_url: z.string().optional().nullable(),
+    })
+  ),
+});
+
 const EventSchema = z.object({
   event: z.string(),
   data: z.unknown(),
@@ -124,13 +139,14 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
       return {
         connected: instance?.status === "linked" || hasConnection,
         status: instance?.status ?? (hasConnection ? "linked" : "disconnected"),
-        lastSeenAt: instance?.last_heartbeat ?? instance?.last_seen_at ?? null,
+        lastSeenAt: instance?.last_seen_at ?? null,
         lastSyncAt: instance?.last_sync_at ?? null,
-        syncCount: instance?.total_synced ?? 0,
+        syncCount: instance?.sync_count ?? 0,
         browserRunning: liveStatus?.isRunning ?? false,
         isLinked,
+        // @ts-ignore
         connectionId: connection?.id ?? null,
-        browserInstanceId: connection?.browser_instance_id ?? instance?.id ?? null,
+        browserInstanceId: instance?.id ?? null,
       };
     }
   );
@@ -391,13 +407,97 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  // =========================================
-  // Webhook endpoints (from WA browser server)
-  // =========================================
+  /**
+   * GET /wa/live-chats
+   * Proxy to browser server to get recent chats
+   */
+  fastify.get(
+    "/wa/live-chats",
+    {
+      preHandler: verifyJWT,
+    },
+    async (_request, reply) => {
+      try {
+        const response = await fetch(`${WA_SERVER_URL}/wa/chats`, {
+          headers: {
+            "X-API-Key": WA_API_KEY,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Browser server error: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        fastify.log.error(error, "Failed to fetch chats from browser server");
+        return reply.code(502).send({ error: "Failed to fetch chats" });
+      }
+    }
+  );
+
+  /**
+   * POST /wa/config
+   * Save sync configuration
+   */
+  fastify.post(
+    "/wa/config",
+    {
+      preHandler: verifyJWT,
+    },
+    async (request, reply) => {
+      const authRequest = request as AuthenticatedRequest;
+      const bodySchema = z.object({
+        monitoredChats: z.array(z.string()),
+      });
+
+      const parseResult = bodySchema.safeParse(request.body);
+
+      if (!parseResult.success) {
+        return reply.code(400).send({ error: "Invalid request body" });
+      }
+
+      const { monitoredChats } = parseResult.data;
+
+      if (!supabaseAdmin) {
+        return reply.code(500).send({ error: "Database not configured" });
+      }
+
+      // 1. Save to database
+      const { error } = await supabaseAdmin
+        .from("connections")
+        .update({ sync_config: { monitoredChats } } as any)
+        .eq("user_id", authRequest.userId)
+        .eq("type", "whatsapp");
+
+      if (error) {
+        fastify.log.error(error, "Failed to update connection config");
+        return reply.code(500).send({ error: "Database update failed" });
+      }
+
+      // 2. Forward to browser server
+      try {
+        await fetch(`${WA_SERVER_URL}/wa/config`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": WA_API_KEY,
+          },
+          body: JSON.stringify({ monitoredChats }),
+        });
+      } catch (error) {
+        // Log but don't fail, as DB update succeeded
+        fastify.log.warn(error, "Failed to push config to browser server");
+      }
+
+      return { success: true };
+    }
+  );
 
   /**
    * POST /wa/linked
-   * Called when WhatsApp login completes (QR scanned)
+   * Called by browser server when WhatsApp linkage is detected
    * Creates/updates connection record and browser instance status
    */
   fastify.post("/wa/linked", async (request, reply) => {
@@ -567,6 +667,47 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   /**
+   * POST /wa/contacts
+   * Store synced contacts
+   */
+  fastify.post("/wa/contacts", async (request, reply) => {
+    if (!verifyApiKey(request, reply)) return;
+
+    const body = ContactSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.code(400).send({ error: "Invalid request", details: body.error.issues });
+    }
+
+    if (!supabaseAdmin) {
+      return reply.code(500).send({ error: "Database not configured" });
+    }
+
+    const { userId, contacts } = body.data;
+    
+    // Prepare upsert
+    // const toUpsert = contacts.map(c => ({ ... }));
+
+    // Upsert in batches of 1000
+    // Note: whatsapp_contacts table is deprecated/removed. 
+    // Skipping storage for now until a generic contacts solution is in place.
+    /*
+    for (let i = 0; i < toUpsert.length; i += 1000) {
+      const batch = toUpsert.slice(i, i + 1000);
+      const { error } = await supabaseAdmin
+        .from("whatsapp_contacts")
+        .upsert(batch, { onConflict: "user_id,wa_id" });
+
+      if (error) {
+        fastify.log.error(error, "Failed to upsert contacts batch");
+      }
+    }
+    */
+
+    fastify.log.info(`Synced ${contacts.length} contacts for user ${userId} (Storage skipped - table removed)`);
+    return { success: true, count: contacts.length };
+  });
+
+  /**
    * POST /wa/messages/batch
    * Called when new messages are detected
    */
@@ -584,26 +725,80 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
 
     const { userId, messages, receivedAt } = body.data;
 
-    // Insert messages
-    const messagesToInsert = messages.map((msg) => ({
-      user_id: userId,
-      message_id: msg.id,
-      chat_id: msg.chatId,
-      chat_name: msg.chatName ?? null,
-      sender: msg.sender,
-      content: msg.content,
-      message_timestamp: msg.timestamp,
-      is_from_me: msg.isFromMe,
-      received_at: receivedAt,
-    }));
+    // Group messages by chat
+    const chats: Record<string, any[]> = {};
+    const chatNames: Record<string, string> = {};
 
-    const { error } = await supabaseAdmin
-      .from("whatsapp_messages")
-      .upsert(messagesToInsert, { onConflict: "user_id,message_id" });
+    for (const msg of messages) {
+      if (!chats[msg.chatId]) chats[msg.chatId] = [];
+      
+      chats[msg.chatId]!.push({
+        id: msg.id,
+        sender: msg.sender,
+        content: msg.content,
+        timestamp: msg.timestamp,
+        isFromMe: msg.isFromMe,
+        receivedAt: receivedAt
+      });
+      
+      if (msg.chatName) chatNames[msg.chatId] = msg.chatName;
+    }
 
-    if (error) {
-      fastify.log.error(error, "Failed to insert messages");
-      return reply.code(500).send({ error: "Failed to store messages" });
+    let storedCount = 0;
+
+    // Process each chat
+    for (const [chatId, chatMessages] of Object.entries(chats)) {
+      try {
+        // 1. Fetch existing conversation
+        const { data: existing } = await supabaseAdmin
+          .from('conversations')
+          .select('id, messages')
+          .eq('user_id', userId)
+          .eq('source', 'whatsapp')
+          .eq('external_id', chatId)
+          .single();
+        
+        // Sort incoming messages by timestamp
+        chatMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+        if (existing) {
+           const existingMessages = (existing.messages as any[]) || [];
+           const existingIds = new Set(existingMessages.map((m: any) => m.id));
+           const toAppend = chatMessages.filter(m => !existingIds.has(m.id));
+           
+           if (toAppend.length > 0) {
+             const finalMessages = [...existingMessages, ...toAppend];
+             // Re-sort entire history just in case
+             finalMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+             
+             await supabaseAdmin
+               .from('conversations')
+               .update({ 
+                 messages: finalMessages as any, // Cast to any to avoid Json type conflicts
+                 updated_at: new Date().toISOString(),
+                 title: chatNames[chatId] || null
+               })
+               .eq('id', existing.id);
+             storedCount += toAppend.length;
+           }
+        } else {
+          // Create new conversation
+          await supabaseAdmin
+            .from('conversations')
+            .insert({
+              user_id: userId,
+              source: 'whatsapp',
+              external_id: chatId,
+              title: chatNames[chatId] || chatId,
+              messages: chatMessages as any,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          storedCount += chatMessages.length;
+        }
+      } catch (err) {
+        fastify.log.error(err, `Failed to sync conversation ${chatId}`);
+      }
     }
 
     // Update last seen
@@ -612,9 +807,9 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
       .update({ last_seen_at: receivedAt })
       .eq("user_id", userId);
 
-    fastify.log.info(`Stored ${messages.length} messages for user ${userId}`);
+    fastify.log.info(`Stored ${storedCount} messages for user ${userId} in conversations table`);
 
-    return { success: true, stored: messages.length };
+    return { success: true, stored: storedCount };
   });
 
   /**
@@ -667,14 +862,15 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
       const limit = Math.min(parseInt(query.limit ?? "50", 10), 100);
 
       let queryBuilder = supabaseAdmin
-        .from("whatsapp_messages")
+        .from("conversations")
         .select("*")
         .eq("user_id", authRequest.userId)
-        .order("received_at", { ascending: false })
-        .limit(limit);
+        .eq("source", "whatsapp")
+        .order("updated_at", { ascending: false })
+        .limit(20); // Limit to recent 20 conversations to avoid fetching too much data
 
       if (query.chatId) {
-        queryBuilder = queryBuilder.eq("chat_id", query.chatId);
+        queryBuilder = queryBuilder.eq("external_id", query.chatId);
       }
 
       const { data, error } = await queryBuilder;
@@ -684,7 +880,35 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(500).send({ error: "Failed to fetch messages" });
       }
 
-      return { messages: data };
+      // Flatten messages from conversations
+      let allMessages: any[] = [];
+      for (const conv of data || []) {
+        if (Array.isArray(conv.messages)) {
+          const chat_id = conv.external_id;
+          const chat_name = conv.title;
+          
+          const msgs = conv.messages.map((m: any) => ({
+             user_id: conv.user_id,
+             message_id: m.id,
+             chat_id: chat_id,
+             chat_name: chat_name,
+             sender: m.sender,
+             content: m.content,
+             message_timestamp: m.timestamp,
+             is_from_me: m.isFromMe,
+             received_at: m.receivedAt || conv.updated_at
+          }));
+          allMessages = allMessages.concat(msgs);
+        }
+      }
+
+      // Sort by timestamp descending
+      allMessages.sort((a, b) => new Date(b.message_timestamp).getTime() - new Date(a.message_timestamp).getTime());
+
+      // Apply limit
+      const result = allMessages.slice(0, limit);
+
+      return { messages: result };
     }
   );
 
@@ -704,32 +928,43 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(500).send({ error: "Database not configured" });
       }
 
-      // Get distinct chats with last message
+      // Get conversations from 'conversations' table
       const { data, error } = await supabaseAdmin
-        .from("whatsapp_messages")
-        .select("chat_id, chat_name, content, received_at")
+        .from("conversations")
+        .select("id, external_id, title, messages, updated_at")
         .eq("user_id", authRequest.userId)
-        .order("received_at", { ascending: false });
+        .eq("source", "whatsapp")
+        .order("updated_at", { ascending: false });
 
       if (error) {
         fastify.log.error(error, "Failed to fetch chats");
         return reply.code(500).send({ error: "Failed to fetch chats" });
       }
 
-      // Group by chat_id and get latest message
-      const chatMap = new Map<string, { chatId: string; chatName: string; lastMessage: string; lastMessageAt: string }>();
-      for (const msg of data || []) {
-        if (!chatMap.has(msg.chat_id)) {
-          chatMap.set(msg.chat_id, {
-            chatId: msg.chat_id,
-            chatName: msg.chat_name || msg.chat_id,
-            lastMessage: msg.content,
-            lastMessageAt: msg.received_at,
-          });
-        }
-      }
+      const chats = (data || []).map((conv: any) => {
+        const msgs = Array.isArray(conv.messages) ? conv.messages : [];
+        // Sort messages to find the last one, or rely on updated_at
+        // Assuming messages are roughly sorted or finding the one with max timestamp
+        let lastMsg = null;
+        let lastMsgAt = conv.updated_at;
 
-      return { chats: Array.from(chatMap.values()) };
+        if (msgs.length > 0) {
+           // Sort by timestamp ascending
+           msgs.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+           const last = msgs[msgs.length - 1];
+           lastMsg = last.content;
+           lastMsgAt = last.timestamp || conv.updated_at;
+        }
+
+        return {
+          chatId: conv.external_id,
+          chatName: conv.title || conv.external_id,
+          lastMessage: lastMsg || "",
+          lastMessageAt: lastMsgAt
+        };
+      });
+
+      return { chats };
     }
   );
 }

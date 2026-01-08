@@ -24,6 +24,13 @@ interface WhatsAppStatus {
   isLinked: boolean;
 }
 
+interface AvailableChat {
+  name: string;
+  id: string;
+  isGroup: boolean;
+  unreadCount: number;
+}
+
 type SettingsSection = 'profile' | 'connected-accounts';
 
 export default function SettingsPage() {
@@ -49,6 +56,13 @@ export default function SettingsPage() {
   const [updating, setUpdating] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Sync Config State
+  const [monitoredChats, setMonitoredChats] = useState<string[]>([]);
+  const [availableChats, setAvailableChats] = useState<AvailableChat[]>([]);
+  const [loadingChats, setLoadingChats] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
   useEffect(() => {
     const checkAuth = async () => {
       const backendUrl = getBackendUrl();
@@ -62,7 +76,8 @@ export default function SettingsPage() {
           return;
         }
         
-        const accessToken = session.access_token;
+        const token = session.access_token;
+        setAccessToken(token);
         
         setUser(session.user);
         setName(session.user.user_metadata?.full_name || session.user.user_metadata?.name || '');
@@ -70,19 +85,25 @@ export default function SettingsPage() {
         // Fetch connections
         const connectionsResponse = await fetch(`${backendUrl}/connections`, {
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            'Authorization': `Bearer ${token}`,
           },
         });
         
         if (connectionsResponse.ok) {
           const connectionsData = await connectionsResponse.json();
           setConnections(connectionsData);
+          
+          // Load existing sync config
+          const waConn = connectionsData.find((c: any) => c.type === 'whatsapp');
+          if (waConn?.syncConfig?.monitoredChats) {
+            setMonitoredChats(waConn.syncConfig.monitoredChats);
+          }
         }
 
         // Fetch WhatsApp status
         const waResponse = await fetch(`${backendUrl}/wa/status`, {
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            'Authorization': `Bearer ${token}`,
           },
         });
         
@@ -175,7 +196,12 @@ export default function SettingsPage() {
           }
           
           if (data.image && !cancelled) {
-            setQrScreenshot(`data:${data.mimeType};base64,${data.image}`);
+            // Check if image is already a Data URL
+            if (data.image.startsWith('data:')) {
+              setQrScreenshot(data.image);
+            } else {
+              setQrScreenshot(`data:${data.mimeType};base64,${data.image}`);
+            }
           }
         }
       } catch (err) {
@@ -562,6 +588,92 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLoadChats = async () => {
+    setLoadingChats(true);
+    setAvailableChats([]);
+    
+    try {
+      const backendUrl = getBackendUrl();
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+      
+      const response = await fetch(`${backendUrl}/wa/live-chats`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load chats');
+      }
+      
+      setAvailableChats(data.chats);
+      
+      if (data.chats.length === 0) {
+        setProfileMessage({ type: 'success', text: 'No recent chats found. Syncing top 5 chats by default.' });
+        setTimeout(() => setProfileMessage(null), 5000);
+      }
+    } catch (error: any) {
+      setWhatsappError(error.message || 'Failed to load chats');
+    } finally {
+      setLoadingChats(false);
+    }
+  };
+
+  const toggleChat = (chatName: string) => {
+    setMonitoredChats(prev => {
+      if (prev.includes(chatName)) {
+        return prev.filter(name => name !== chatName);
+      } else {
+        return [...prev, chatName];
+      }
+    });
+  };
+
+  const handleSaveSyncConfig = async () => {
+    setSavingConfig(true);
+    setProfileMessage(null);
+    
+    try {
+      const backendUrl = getBackendUrl();
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+      
+      // Save the sync configuration
+      const response = await fetch(`${backendUrl}/wa/config`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ monitoredChats }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save sync configuration');
+      }
+      
+      setProfileMessage({ type: 'success', text: 'Sync configuration saved successfully' });
+      setTimeout(() => setProfileMessage(null), 3000);
+    } catch (error: any) {
+      setProfileMessage({ type: 'error', text: error.message || 'Failed to save sync configuration' });
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   const isGoogleConnected = connections.some(conn => conn.type === 'google');
 
   if (loading) {
@@ -920,6 +1032,85 @@ export default function SettingsPage() {
                     >
                       {whatsappLoading ? 'Syncing...' : '🔄 Sync Now'}
                     </button>
+
+                    {/* Sync Configuration Strategy */}
+                    <div style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+                      <h4 style={{ marginBottom: '10px', fontSize: '0.95rem' }}>Sync Configuration</h4>
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                        Select specific conversations to sync. They will be synced slowly with random delays to avoid bot detection.
+                      </p>
+                      
+                      <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                        <button 
+                          onClick={handleLoadChats} 
+                          disabled={loadingChats || whatsappLoading}
+                          className={styles.syncButton}
+                          style={{ fontSize: '0.85rem', padding: '6px 12px' }}
+                        >
+                          {loadingChats ? 'Loading Chats...' : 'Load Recent Chats'}
+                        </button>
+                        
+                        <button 
+                          onClick={handleSaveSyncConfig} 
+                          disabled={savingConfig}
+                          className={styles.connectButton} 
+                          style={{ fontSize: '0.85rem', padding: '6px 12px', background: savingConfig ? '#555' : undefined }}
+                        >
+                          {savingConfig ? 'Saving...' : 'Save Selection'}
+                        </button>
+                      </div>
+                      
+                      {availableChats.length > 0 && (
+                        <div style={{
+                          maxHeight: '200px', 
+                          overflowY: 'auto', 
+                          background: 'var(--bg-secondary)', 
+                          padding: '10px',
+                          borderRadius: '8px',
+                          border: '1px solid var(--border-color)'
+                        }}>
+                          {availableChats.map(chat => (
+                            <label key={chat.id} style={{
+                              padding: '8px', 
+                              display: 'flex', 
+                              alignItems: 'center',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid var(--border-color)',
+                              fontSize: '0.9rem'
+                            }}>
+                              <input 
+                                type="checkbox" 
+                                checked={monitoredChats.includes(chat.name)}
+                                onChange={() => toggleChat(chat.name)}
+                                style={{ marginRight: '10px' }}
+                              />
+                              <span>{chat.name}</span>
+                              {chat.unreadCount > 0 && (
+                                <span style={{ 
+                                  marginLeft: 'auto', 
+                                  background: '#25D366', 
+                                  color: 'white', 
+                                  borderRadius: '999px', 
+                                  padding: '2px 6px', 
+                                  fontSize: '0.7em' 
+                                }}>
+                                  {chat.unreadCount}
+                                </span>
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      
+                      <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        {monitoredChats.length === 0 ? (
+                          <span>Syncing: <strong>Top 5 recent chats (Default)</strong></span>
+                        ) : (
+                          <span>Syncing: <strong>{monitoredChats.length} selected chats</strong></span>
+                        )}
+                      </div>
+                    </div>
+
                     {whatsappStatus.lastSeenAt && (
                       <div className={styles.connectionMeta}>
                         <span>Last activity: {new Date(whatsappStatus.lastSeenAt).toLocaleString()}</span>
