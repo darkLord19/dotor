@@ -46,12 +46,12 @@ export class WhatsAppClient extends EventEmitter {
     this.state.isInitialized = true; // Mark as starting
     
     // Determine executable path based on environment
-    const isProduction = process.env.NODE_ENV === 'production';
-    const linuxPath = '/usr/bin/google-chrome-stable';
-    const macPath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    // const isProduction = process.env.NODE_ENV === 'production';
+    const executablePath = '/usr/bin/google-chrome-stable';
+    // const macPath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
     
     // In Docker (production), use Linux path. Local dev uses Mac path.
-    const executablePath = isProduction ? linuxPath : (process.env.CHROME_BIN || macPath);
+    // const executablePath = isProduction ? linuxPath : (process.env.CHROME_BIN || macPath);
 
     // Use LocalAuth to persist session
     this.client = new ClientClass({
