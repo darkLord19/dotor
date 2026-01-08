@@ -57,11 +57,17 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --production
+# Install all dependencies (needed for build)
+RUN npm install
 
 # Copy application code
 COPY . .
+
+# Build TypeScript code
+RUN npm run build
+
+# Prune dev dependencies (optional, checks if allowed in this env)
+# RUN npm prune --production
 
 # Set ownership
 RUN chown -R wauser:wauser /app

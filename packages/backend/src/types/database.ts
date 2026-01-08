@@ -273,55 +273,6 @@ export type Database = {
           }
         ]
       }
-      // Legacy/Deprecated messages table
-      /*
-      messages: {
-        Row: {
-          id: string
-          conversation_id: string
-          user_id: string
-          external_id: string | null
-          sender: string
-          content: string | null
-          recieved_at: string
-          timestamp: string
-          is_from_me: boolean
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          conversation_id: string
-          user_id: string
-          external_id?: string | null
-          sender: string
-          content?: string | null
-          recieved_at?: string
-          timestamp: string
-          is_from_me?: boolean
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          conversation_id?: string
-          user_id?: string
-          external_id?: string | null
-          sender?: string
-          content?: string | null
-          recieved_at?: string
-          timestamp?: string
-          is_from_me?: boolean
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "messages_conversation_id_fkey"
-            columns: ["conversation_id"]
-            referencedRelation: "conversations"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      */
     }
     Views: {
       [_ in never]: never

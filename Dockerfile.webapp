@@ -1,0 +1,44 @@
+# Base stage
+FROM node:20-slim AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+
+# Build stage
+FROM base AS build
+COPY . /usr/src/app
+WORKDIR /usr/src/app
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+
+# Build dependencies first
+RUN pnpm run --filter @dotor/ui build
+
+# Build webapp
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm run --filter @dotor/webapp build
+
+# Production stage
+FROM base AS runner
+WORKDIR /usr/src/app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Copy workspace config
+COPY --from=build /usr/src/app/package.json ./
+COPY --from=build /usr/src/app/node_modules ./node_modules
+
+# Copy dependency packages
+COPY --from=build /usr/src/app/packages/ui ./packages/ui
+
+# Copy webapp
+COPY --from=build /usr/src/app/packages/webapp/package.json ./packages/webapp/package.json
+COPY --from=build /usr/src/app/packages/webapp/.next ./packages/webapp/.next
+COPY --from=build /usr/src/app/packages/webapp/public ./packages/webapp/public
+COPY --from=build /usr/src/app/packages/webapp/node_modules ./packages/webapp/node_modules
+
+WORKDIR /usr/src/app/packages/webapp
+
+EXPOSE 3000
+
+CMD ["pnpm", "start"]

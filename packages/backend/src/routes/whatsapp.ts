@@ -331,11 +331,14 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
         .eq("user_id", authRequest.userId)
         .eq("type", "whatsapp");
 
-      // Optionally delete messages
-      // await supabaseAdmin
-      //   .from("whatsapp_messages")
-      //   .delete()
-      //   .eq("user_id", authRequest.userId);
+      /*
+      // Optionally delete synced data
+      await supabaseAdmin
+        .from("synced_conversations")
+        .delete()
+        .eq("user_id", authRequest.userId)
+        .eq("source", "whatsapp");
+      */
 
       return { success: true, message: "WhatsApp disconnected" };
     }
@@ -684,24 +687,8 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
 
     const { userId, contacts } = body.data;
     
-    // Prepare upsert
-    // const toUpsert = contacts.map(c => ({ ... }));
-
-    // Upsert in batches of 1000
     // Note: whatsapp_contacts table is deprecated/removed. 
     // Skipping storage for now until a generic contacts solution is in place.
-    /*
-    for (let i = 0; i < toUpsert.length; i += 1000) {
-      const batch = toUpsert.slice(i, i + 1000);
-      const { error } = await supabaseAdmin
-        .from("whatsapp_contacts")
-        .upsert(batch, { onConflict: "user_id,wa_id" });
-
-      if (error) {
-        fastify.log.error(error, "Failed to upsert contacts batch");
-      }
-    }
-    */
 
     fastify.log.info(`Synced ${contacts.length} contacts for user ${userId} (Storage skipped - table removed)`);
     return { success: true, count: contacts.length };

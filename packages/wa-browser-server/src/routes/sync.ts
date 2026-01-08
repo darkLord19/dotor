@@ -1,14 +1,16 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+// import { z } from 'zod';
 import { whatsAppClient } from '../lib/whatsapp-client.js';
 import { verifyApiKey } from '../lib/auth.js';
 
+/*
 const SyncCompleteSchema = z.object({
   syncId: z.string(),
   success: z.boolean(),
   messagesFound: z.number().optional(),
   error: z.string().optional(),
 });
+*/
 
 export async function syncRoutes(fastify: FastifyInstance) {
   /**
@@ -88,7 +90,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
    * GET /sync/pending
    * Check if there's a pending sync request (Legacy)
    */
-  fastify.get('/pending', async (request, reply) => {
+  fastify.get('/pending', async (_request, _reply) => {
     return { hasPending: false };
   });
 
@@ -96,7 +98,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
    * POST /sync/complete
    * Legacy endpoint
    */
-  fastify.post('/complete', async (request, reply) => {
+  fastify.post('/complete', async (_request, _reply) => {
     return { success: true };
   });
 }

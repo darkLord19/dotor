@@ -3,6 +3,7 @@ set -e
 
 # Start Xvfb (virtual framebuffer for headful Chrome)
 echo "Starting Xvfb..."
+rm -f /tmp/.X99-lock
 Xvfb :99 -screen 0 1024x768x24 -ac &
 sleep 2
 

@@ -7,9 +7,9 @@ const SpawnSchema = z.object({
   userId: z.string().uuid(),
 });
 
-const KillSchema = z.object({
-  userId: z.string().uuid(),
-});
+// const KillSchema = z.object({
+//   userId: z.string().uuid(),
+// });
 
 export async function browserRoutes(fastify: FastifyInstance) {
   // Middleware to verify API key
@@ -24,7 +24,7 @@ export async function browserRoutes(fastify: FastifyInstance) {
    * GET /browser/status
    * Get current browser state
    */
-  fastify.get('/status', async (request, reply) => {
+  fastify.get('/status', async (_request, _reply) => {
     const state = whatsAppClient.getState();
     return {
       isRunning: state.isInitialized,
@@ -62,10 +62,10 @@ export async function browserRoutes(fastify: FastifyInstance) {
    * POST /browser/stop
    * Stop the browser instance
    */
-  fastify.post('/stop', async (request, reply) => {
+  fastify.post('/stop', async (_request, _reply) => {
     // We don't really use the userId for stopping anymore since it's a singleton
     // but we can check if it matches
-    const state = whatsAppClient.getState();
+    // const state = whatsAppClient.getState();
     await whatsAppClient.destroy();
 
     return { success: true, message: 'Browser stopped' };
@@ -75,7 +75,7 @@ export async function browserRoutes(fastify: FastifyInstance) {
    * POST /browser/activity
    * Record user activity (extend idle timeout)
    */
-  fastify.post('/activity', async (request, reply) => {
+  fastify.post('/activity', async (_request, _reply) => {
     // Legacy support
     return { success: true };
   });

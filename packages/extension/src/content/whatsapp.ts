@@ -3,11 +3,6 @@
  * Read-only DOM search - never navigates or mutates
  */
 
-import { extractSnippets } from '../lib/dom-search.js';
-// Keep extractSnippets for potential future use or other parts of the file
-// @ts-ignore
-const _keep = extractSnippets;
-
 // WhatsApp Web selectors (may need updates as WhatsApp changes their UI)
 const SELECTORS = {
   messageContainer: '#main',

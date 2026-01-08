@@ -55,7 +55,7 @@ export async function webhookRoutes(fastify: FastifyInstance) {
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
-      fastify.log.error('Failed to forward linked status to backend:', err);
+      fastify.log.error(err, 'Failed to forward linked status to backend:');
     }
 
     return { success: true };
@@ -84,7 +84,7 @@ export async function webhookRoutes(fastify: FastifyInstance) {
         receivedAt: new Date().toISOString(),
       });
     } catch (err) {
-      fastify.log.error('Failed to forward messages to backend:', err);
+      fastify.log.error(err, 'Failed to forward messages to backend:');
       return reply.code(502).send({ error: 'Failed to forward to backend' });
     }
 
@@ -98,7 +98,7 @@ export async function webhookRoutes(fastify: FastifyInstance) {
    * POST /webhook/heartbeat
    * Called periodically by content script to keep connection alive
    */
-  fastify.post('/heartbeat', async (request, reply) => {
+  fastify.post('/heartbeat', async (_request, _reply) => {
     browserManager.recordActivity();
     return { success: true };
   });

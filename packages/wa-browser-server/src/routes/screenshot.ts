@@ -51,7 +51,7 @@ export async function screenshotRoutes(fastify: FastifyInstance) {
    * POST /screenshot/capture
    * No-op
    */
-  fastify.post('/capture', async (request, reply) => {
+  fastify.post('/capture', async (_request, _reply) => {
     return { success: true };
   });
 }
