@@ -16,6 +16,18 @@ const callbackSchema = z.object({
   state: z.string(),
 });
 
+/*
+interface GoogleConnection {
+  email?: string | null;
+  scopes?: string[];
+  created_at?: string;
+  token_expires_at?: string;
+  sync_config?: {
+    monitoredChats?: string[];
+  };
+}
+*/
+
 export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
   // Get all connections
   fastify.get(
@@ -37,13 +49,12 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(500).send({ error: "Failed to fetch connections" });
       }
 
-      const connections = (data || []).map((conn) => ({
+      const connections = (data || []).map((conn: any) => ({
         type: conn.type,
         email: conn.email,
         scopes: conn.scopes,
         connectedAt: conn.created_at,
         needsRefresh: new Date(conn.token_expires_at) < new Date(),
-        // @ts-ignore
         syncConfig: conn.sync_config,
       }));
 

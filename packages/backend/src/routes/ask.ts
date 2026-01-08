@@ -2,16 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { verifyJWT, type AuthenticatedRequest } from '../proxy/auth.js';
 import { createUserClient, supabaseAdmin } from '../lib/supabase.js';
-import { analyzeQuery, planGmailQuery, type Message, type GmailQueryPlan } from '../lib/openai.js';
+import { planQuery, type Message } from '../lib/openai.js';
 import { searchGmail } from '../lib/gmail.js';
 import { getCalendarEvents, refreshAccessToken } from '../lib/calendar.js';
 import { normalizeGmailResults, normalizeCalendarResults, mergeResults } from '../lib/normalizer.js';
 import { synthesizeAnswer } from '../lib/synthesizer.js';
 import { decryptTokens, encrypt } from '../lib/encryption.js';
-import { getFeatureFlags, filterAnalysisByFlags, isExtensionEnabled, type FeatureFlags } from '../lib/feature-flags.js';
+import { getFeatureFlags, isExtensionEnabled, type FeatureFlags } from '../lib/feature-flags.js';
 import { searchWhatsApp } from '../lib/whatsapp.js';
-import { planQuery, type WhatsAppQueryPlan, type GmailQueryPlan } from '../lib/openai.js';
-import type { SearchHit, PendingSearch, DOMInstruction } from '../types/search.js';
+import type { SearchHit, PendingSearch } from '../types/search.js';
 
 const askRequestSchema = z.object({
   query: z.string().min(1).max(1000),
@@ -216,7 +215,7 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
 
       const results: SearchHit[] = [];
       const sourcesNeeded: string[] = [];
-      const domInstructions: DOMInstruction[] = [];
+      // const domInstructions: DOMInstruction[] = [];
 
       // Step 2: Fetch Gmail data if needed
       if (analysis.needsGmail && gmailPlan) {
