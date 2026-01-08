@@ -749,52 +749,70 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
     // Process each chat
     for (const [chatId, chatMessages] of Object.entries(chats)) {
       try {
-        // 1. Fetch existing conversation
+        // 1. Fetch or create synced_conversation
+        let conversationId: string | undefined;
+
         const { data: existing } = await supabaseAdmin
-          .from('conversations')
-          .select('id, messages')
+          .from('synced_conversations')
+          .select('id')
           .eq('user_id', userId)
           .eq('source', 'whatsapp')
           .eq('external_id', chatId)
           .single();
-        
-        // Sort incoming messages by timestamp
-        chatMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         if (existing) {
-           const existingMessages = (existing.messages as any[]) || [];
-           const existingIds = new Set(existingMessages.map((m: any) => m.id));
-           const toAppend = chatMessages.filter(m => !existingIds.has(m.id));
-           
-           if (toAppend.length > 0) {
-             const finalMessages = [...existingMessages, ...toAppend];
-             // Re-sort entire history just in case
-             finalMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-             
-             await supabaseAdmin
-               .from('conversations')
-               .update({ 
-                 messages: finalMessages as any, // Cast to any to avoid Json type conflicts
-                 updated_at: new Date().toISOString(),
-                 title: chatNames[chatId] || null
-               })
-               .eq('id', existing.id);
-             storedCount += toAppend.length;
-           }
+          conversationId = existing.id;
+          // Update timestamp and title
+          await supabaseAdmin
+            .from('synced_conversations')
+            .update({ 
+              updated_at: new Date().toISOString(),
+              title: chatNames[chatId] || null
+            })
+            .eq('id', conversationId);
         } else {
           // Create new conversation
-          await supabaseAdmin
-            .from('conversations')
+          const { data: newConv } = await supabaseAdmin
+            .from('synced_conversations')
             .insert({
               user_id: userId,
               source: 'whatsapp',
               external_id: chatId,
               title: chatNames[chatId] || chatId,
-              messages: chatMessages as any,
+              // metadata: {},
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
-            });
-          storedCount += chatMessages.length;
+            })
+            .select()
+            .single();
+          
+          if (newConv) conversationId = newConv.id;
+        }
+
+        if (conversationId) {
+          // 2. Insert individual synced_messages
+          const messagesToInsert = chatMessages.map(m => ({
+            conversation_id: conversationId,
+            user_id: userId,
+            external_id: m.id,
+            sender: m.sender,
+            content: m.content,
+            timestamp: m.timestamp,
+            received_at: m.receivedAt,
+            is_from_me: m.isFromMe,
+            created_at: new Date().toISOString()
+          }));
+
+          // Use upsert to avoid duplicates
+          const { error } = await supabaseAdmin
+            .from('synced_messages')
+            .upsert(messagesToInsert, { onConflict: 'user_id,conversation_id,external_id' });
+            
+          if (error) {
+             fastify.log.error(error, `Failed to insert synced messages for ${chatId}`);
+          } else {
+             storedCount += chatMessages.length;
+          }
         }
       } catch (err) {
         fastify.log.error(err, `Failed to sync conversation ${chatId}`);
@@ -807,7 +825,7 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
       .update({ last_seen_at: receivedAt })
       .eq("user_id", userId);
 
-    fastify.log.info(`Stored ${storedCount} messages for user ${userId} in conversations table`);
+    fastify.log.info(`Stored ${storedCount} messages for user ${userId} in synced_messages table`);
 
     return { success: true, stored: storedCount };
   });
@@ -862,15 +880,14 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
       const limit = Math.min(parseInt(query.limit ?? "50", 10), 100);
 
       let queryBuilder = supabaseAdmin
-        .from("conversations")
-        .select("*")
+        .from("synced_messages")
+        .select("*, synced_conversations!inner(title, external_id)")
         .eq("user_id", authRequest.userId)
-        .eq("source", "whatsapp")
-        .order("updated_at", { ascending: false })
-        .limit(20); // Limit to recent 20 conversations to avoid fetching too much data
+        .order("timestamp", { ascending: false })
+        .limit(limit);
 
       if (query.chatId) {
-        queryBuilder = queryBuilder.eq("external_id", query.chatId);
+        queryBuilder = queryBuilder.eq("synced_conversations.external_id", query.chatId);
       }
 
       const { data, error } = await queryBuilder;
@@ -880,35 +897,20 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(500).send({ error: "Failed to fetch messages" });
       }
 
-      // Flatten messages from conversations
-      let allMessages: any[] = [];
-      for (const conv of data || []) {
-        if (Array.isArray(conv.messages)) {
-          const chat_id = conv.external_id;
-          const chat_name = conv.title;
-          
-          const msgs = conv.messages.map((m: any) => ({
-             user_id: conv.user_id,
-             message_id: m.id,
-             chat_id: chat_id,
-             chat_name: chat_name,
+      // Map to frontend expectation
+      const messages = (data || []).map((m: any) => ({
+             user_id: m.user_id,
+             message_id: m.external_id,
+             chat_id: m.synced_conversations?.external_id,
+             chat_name: m.synced_conversations?.title,
              sender: m.sender,
              content: m.content,
              message_timestamp: m.timestamp,
-             is_from_me: m.isFromMe,
-             received_at: m.receivedAt || conv.updated_at
-          }));
-          allMessages = allMessages.concat(msgs);
-        }
-      }
+             is_from_me: m.is_from_me,
+             received_at: m.received_at
+      }));
 
-      // Sort by timestamp descending
-      allMessages.sort((a, b) => new Date(b.message_timestamp).getTime() - new Date(a.message_timestamp).getTime());
-
-      // Apply limit
-      const result = allMessages.slice(0, limit);
-
-      return { messages: result };
+      return { messages };
     }
   );
 
@@ -928,10 +930,10 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(500).send({ error: "Database not configured" });
       }
 
-      // Get conversations from 'conversations' table
+      // Get conversations from 'synced_conversations' table
       const { data, error } = await supabaseAdmin
-        .from("conversations")
-        .select("id, external_id, title, messages, updated_at")
+        .from("synced_conversations")
+        .select("id, external_id, title, updated_at")
         .eq("user_id", authRequest.userId)
         .eq("source", "whatsapp")
         .order("updated_at", { ascending: false });
@@ -941,28 +943,25 @@ export async function whatsappRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.code(500).send({ error: "Failed to fetch chats" });
       }
 
-      const chats = (data || []).map((conv: any) => {
-        const msgs = Array.isArray(conv.messages) ? conv.messages : [];
-        // Sort messages to find the last one, or rely on updated_at
-        // Assuming messages are roughly sorted or finding the one with max timestamp
-        let lastMsg = null;
-        let lastMsgAt = conv.updated_at;
-
-        if (msgs.length > 0) {
-           // Sort by timestamp ascending
-           msgs.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-           const last = msgs[msgs.length - 1];
-           lastMsg = last.content;
-           lastMsgAt = last.timestamp || conv.updated_at;
-        }
+      // Fetch latest message for each chat explicitly from synced_messages
+      // This is a bit expensive, N+1 problem. Optimally we'd use a join or view.
+      // For now, let's keep it simple.
+      const chats = await Promise.all((data || []).map(async (conv: any) => {
+        const { data: lastMsg } = await supabaseAdmin!
+            .from("synced_messages")
+            .select("content, timestamp")
+            .eq("conversation_id", conv.id)
+            .order("timestamp", { ascending: false })
+            .limit(1)
+            .single();
 
         return {
           chatId: conv.external_id,
           chatName: conv.title || conv.external_id,
-          lastMessage: lastMsg || "",
-          lastMessageAt: lastMsgAt
+          lastMessage: lastMsg?.content || "",
+          lastMessageAt: lastMsg?.timestamp || conv.updated_at
         };
-      });
+      }));
 
       return { chats };
     }

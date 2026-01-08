@@ -9,6 +9,8 @@ import { normalizeGmailResults, normalizeCalendarResults, mergeResults } from '.
 import { synthesizeAnswer } from '../lib/synthesizer.js';
 import { decryptTokens, encrypt } from '../lib/encryption.js';
 import { getFeatureFlags, filterAnalysisByFlags, isExtensionEnabled, type FeatureFlags } from '../lib/feature-flags.js';
+import { searchWhatsApp } from '../lib/whatsapp.js';
+import { planQuery, type WhatsAppQueryPlan, type GmailQueryPlan } from '../lib/openai.js';
 import type { SearchHit, PendingSearch, DOMInstruction } from '../types/search.js';
 
 const askRequestSchema = z.object({
@@ -46,11 +48,13 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
     const supabase = createUserClient(authRequest.accessToken);
 
     // Clean up expired conversations for this user (older than 10 minutes)
+    // Only clean up 'ask' conversations, not synced WhatsApp chat history
     const tenMinutesAgoISO = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     await supabase
       .from('conversations')
       .delete()
       .eq('user_id', authRequest.userId)
+      .neq('source', 'whatsapp') // Protect WhatsApp data
       .lt('updated_at', tenMinutesAgoISO);
 
     // Handle conversation history
@@ -87,6 +91,7 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
         .insert([{
           user_id: authRequest.userId,
           messages: [],
+          source: 'ask' // Mark as ask session
         }])
         .select()
         .single();
@@ -200,46 +205,24 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
       
       fastify.log.info({ featureFlags }, 'Feature flags loaded');
 
-      // Step 1: Analyze query to determine which sources are needed
-      fastify.log.info({ query }, 'Analyzing query');
-      const rawAnalysis = await analyzeQuery(query, conversationHistory, featureFlags);
+      // Step 1: Analyze query and plan in one shot
+      fastify.log.info({ query }, 'Planning query');
+      const plan = await planQuery(query, conversationHistory, featureFlags);
+      const analysis = plan.analysis;
+      const gmailPlan = plan.gmail;
+      const whatsappPlan = plan.whatsapp;
       
-      // Filter analysis based on feature flags (disable LinkedIn/WhatsApp if FF is off)
-      const filteredAnalysis = filterAnalysisByFlags(rawAnalysis, featureFlags);
-
-      // Force enable sources if flags are explicitly on (per user request)
-      if (featureFlags.enableWhatsApp) {
-        filteredAnalysis.needsWhatsApp = true;
-        if (!filteredAnalysis.whatsAppKeywords || filteredAnalysis.whatsAppKeywords.length === 0) {
-          filteredAnalysis.whatsAppKeywords = [query];
-        }
-      }
-
-      if (featureFlags.enableLinkedIn) {
-        filteredAnalysis.needsLinkedIn = true;
-        if (!filteredAnalysis.linkedInKeywords || filteredAnalysis.linkedInKeywords.length === 0) {
-          filteredAnalysis.linkedInKeywords = [query];
-        }
-      }
-
-      const analysis = {
-        ...rawAnalysis,
-        ...filteredAnalysis,
-      };
-      fastify.log.info({ analysis, filteredByFlags: !isExtensionEnabled(featureFlags) }, 'Query analysis complete');
+      fastify.log.info({ analysis, filteredByFlags: !isExtensionEnabled(featureFlags) }, 'Query planning complete');
 
       const results: SearchHit[] = [];
       const sourcesNeeded: string[] = [];
       const domInstructions: DOMInstruction[] = [];
-      let gmailPlan: GmailQueryPlan | undefined;
 
       // Step 2: Fetch Gmail data if needed
-      if (analysis.needsGmail) {
+      if (analysis.needsGmail && gmailPlan) {
         sourcesNeeded.push('gmail');
         try {
-          // Plan Gmail query
-          gmailPlan = await planGmailQuery(query, conversationHistory);
-          fastify.log.info({ gmailPlan }, 'Gmail query planned');
+          fastify.log.info({ gmailPlan }, 'Gmail query ready');
 
           // Execute Gmail search with retry on 401
           let gmailResults;
@@ -333,77 +316,29 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
         }
       }
 
-      // Step 4: Check if extension sources are needed (only if async mode is enabled)
-      const needsExtension = featureFlags.enableAsyncMode && 
-                            (analysis.needsLinkedIn || analysis.needsWhatsApp);
-      
-      if (analysis.needsLinkedIn && analysis.linkedInKeywords?.length) {
-        sourcesNeeded.push('linkedin');
-        domInstructions.push({
-          request_id: requestId,
-          source: 'linkedin',
-          keywords: analysis.linkedInKeywords,
-        });
-      }
-      
-      if (analysis.needsWhatsApp && analysis.whatsAppKeywords?.length) {
-        sourcesNeeded.push('whatsapp');
-        domInstructions.push({
-          request_id: requestId,
-          source: 'whatsapp',
-          keywords: analysis.whatsAppKeywords,
-        });
+      // Step 4: Fetch WhatsApp data (Local Search)
+      if (featureFlags.enableWhatsApp && analysis.needsWhatsApp && whatsappPlan) {
+         try {
+            fastify.log.info({ whatsappPlan }, 'WhatsApp query ready');
+
+            const waResults = await searchWhatsApp(supabase, authRequest.userId, whatsappPlan); 
+            fastify.log.info({ count: waResults.length }, 'WhatsApp search complete');
+            results.push(...waResults);
+            sourcesNeeded.push('whatsapp');
+         } catch (error) {
+            fastify.log.error(error, 'WhatsApp search failed');
+         }
       }
 
-      // If async mode is disabled, skip extension and return sync response with Gmail/Calendar only
-      if (!featureFlags.enableAsyncMode && (analysis.needsLinkedIn || analysis.needsWhatsApp)) {
-        fastify.log.info('Async mode disabled - returning sync response with Gmail/Calendar only');
-      }
-
-      // If extension is needed AND async mode is enabled, store pending search and return early
-      if (needsExtension) {
-        const pendingSearch: PendingSearch = {
-          request_id: requestId,
-          user_id: authRequest.userId,
-          query,
-          requires_extension: true,
-          sources_needed: sourcesNeeded as PendingSearch['sources_needed'],
-          instructions: domInstructions,
-          results: {
-            gmail: results.filter(r => r.source === 'gmail'),
-            calendar: results.filter(r => r.source === 'calendar'),
-          },
-          status: 'pending',
-          created_at: new Date(),
-          ...(currentConversationId ? { conversation_id: currentConversationId } : {}),
-          metadata: {
-            queryAnalysis: analysis,
-            ...(gmailPlan ? { gmailPlan } : {}),
-          },
-        };
-        
-        pendingSearches.set(requestId, pendingSearch);
-        
-        // Clean up old pending searches (older than 5 minutes)
-        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-        for (const [id, search] of pendingSearches) {
-          if (search.created_at.getTime() < fiveMinutesAgo) {
-            pendingSearches.delete(id);
-          }
-        }
-
-        return {
-          status: 'pending',
-          request_id: requestId,
-          requires_extension: true,
-          sources_needed: sourcesNeeded.filter(s => s === 'linkedin' || s === 'whatsapp'),
-          instructions: domInstructions,
-        };
+      // LinkedIn (Local Search - Not implemented yet, no extension search)
+      if (featureFlags.enableLinkedIn && analysis.needsLinkedIn) {
+         fastify.log.info('LinkedIn search requested - local search not fully implemented/empty');
+         // No logic here, just skipping extension instruction as requested
       }
 
       // Step 5: Synthesize answer from results (sync response)
       // Filter sources to only include what was actually searched
-      const actualSourcesSearched = sourcesNeeded.filter(s => s === 'gmail' || s === 'calendar');
+      const actualSourcesSearched = sourcesNeeded;
       const mergedResults = mergeResults(results);
       fastify.log.info({ totalResults: mergedResults.length }, 'Synthesizing answer');
       
@@ -419,6 +354,7 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
             metadata: {
               queryAnalysis: analysis,
               ...(gmailPlan ? { gmailPlan } : {}),
+              ...(whatsappPlan ? { whatsappPlan } : {}),
             }
           },
           { role: 'assistant', content: answer.answer }
@@ -449,6 +385,16 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
       });
     }
   });
+
+/*
+  // Get pending search status
+  fastify.get('/ask/:requestId', {
+    preHandler: verifyJWT,
+  }, async (request, reply) => {
+    // ... pending search logic disabled ...
+    return reply.code(404).send({ error: 'Pending search mechanism disabled' });
+  });
+*/
 
   // Get pending search status
   fastify.get('/ask/:requestId', {

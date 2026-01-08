@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { getGmailQueryPlanPrompt, getQueryAnalysisPrompt } from './prompts.js';
+import { getGmailQueryPlanPrompt, getUnifiedQueryPlanPrompt } from './prompts.js';
 import type { FeatureFlags } from './feature-flags.js';
 
 // Use OpenRouter with OpenAI SDK
@@ -37,6 +37,18 @@ export const GmailQueryPlanSchema = z.object({
 
 export type GmailQueryPlan = z.infer<typeof GmailQueryPlanSchema>;
 
+// Schema for WhatsApp query plan
+export const WhatsAppQueryPlanSchema = z.object({
+  keywords: z.array(z.string()),
+  sender: z.string().nullable().optional(),
+  dateRange: z.object({
+    days: z.number().nullable(),
+  }).nullable().optional(),
+  limit: z.number().optional().default(10),
+});
+
+export type WhatsAppQueryPlan = z.infer<typeof WhatsAppQueryPlanSchema>;
+
 // Schema for determining required data sources
 export const QueryAnalysisSchema = z.object({
   needsGmail: z.boolean(),
@@ -60,6 +72,7 @@ export interface Message {
   metadata?: {
     queryAnalysis?: QueryAnalysis;
     gmailPlan?: GmailQueryPlan;
+    whatsappPlan?: WhatsAppQueryPlan;
   };
 }
 
@@ -94,18 +107,69 @@ export async function planGmailQuery(userQuery: string, conversationHistory: Mes
   return GmailQueryPlanSchema.parse(parsed);
 }
 
+/*
+// Convert natural language to WhatsApp search query
+export async function planWhatsAppQuery(userQuery: string, conversationHistory: Message[] = []): Promise<WhatsAppQueryPlan> {
+    // ...deprecated...
+}
+*/
+
+/*
 // Analyze user query to determine which data sources are needed
+// DEPRECATED: Use planQuery instead
+*/
+/*
 export async function analyzeQuery(userQuery: string, conversationHistory: Message[] = [], flags: FeatureFlags): Promise<QueryAnalysis> {
-  // Get today's date for context
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0] ?? ''; // YYYY-MM-DD format
+  // ...
+  return {} as QueryAnalysis;
+}
+*/
+
+/*
+// Analyze user query to determine which data sources are needed
+// DEPRECATED: Use planQuery instead
+export async function analyzeQuery(userQuery: string, conversationHistory: Message[] = [], flags: FeatureFlags): Promise<QueryAnalysis> {
+  // ...
+  return {} as QueryAnalysis;
+}
+*/
+
+// Unified Query Plan Schema
+export const UnifiedQueryPlanSchema = z.object({
+  analysis: z.object({
+    needsGmail: z.boolean(),
+    needsCalendar: z.boolean(),
+    needsWhatsApp: z.boolean(),
+    // LinkedIn deprecated/stubbed
+    needsLinkedIn: z.boolean().optional().default(false),
+    calendarDateRange: z.object({
+      start: z.string().optional(),
+      end: z.string().optional(),
+    }).nullable().optional(),
+  }),
+  gmail: GmailQueryPlanSchema.nullable().optional(),
+  whatsapp: WhatsAppQueryPlanSchema.nullable().optional(),
+});
+
+export type UnifiedQueryPlan = z.infer<typeof UnifiedQueryPlanSchema>;
+
+// Unified planning function
+export async function planQuery(
+  userQuery: string, 
+  conversationHistory: Message[] = [], 
+  flags: FeatureFlags
+): Promise<UnifiedQueryPlan> {
+  const todayStr = new Date().toISOString().split('T')[0]!;
   
   const response = await openai.chat.completions.create({
     model: DEFAULT_MODEL,
     messages: [
       {
         role: 'system',
-        content: getQueryAnalysisPrompt(todayStr, flags) + "\n\n=== CONVERSATION HISTORY ===\nUse the following conversation history to understand context.",
+        content: getUnifiedQueryPlanPrompt(todayStr, {
+          enableWhatsApp: !!flags.enableWhatsApp,
+          enableGmail: !!flags.enableGmail
+        }) + "\n\n=== CONVERSATION HISTORY ===\nUse the following conversation history to resolve references.",
       },
       ...conversationHistory.map(msg => ({
         role: msg.role,
@@ -126,5 +190,5 @@ export async function analyzeQuery(userQuery: string, conversationHistory: Messa
   }
 
   const parsed = JSON.parse(content);
-  return QueryAnalysisSchema.parse(parsed);
+  return UnifiedQueryPlanSchema.parse(parsed);
 }

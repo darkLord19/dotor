@@ -191,6 +191,137 @@ export type Database = {
         }
         Relationships: []
       }
+      synced_conversations: {
+        Row: {
+          id: string
+          user_id: string
+          source: string
+          external_id: string
+          title: string | null
+          metadata: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          source: string
+          external_id: string
+          title?: string | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          source?: string
+          external_id?: string
+          title?: string | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      synced_messages: {
+        Row: {
+          id: string
+          conversation_id: string
+          user_id: string
+          external_id: string
+          sender: string
+          content: string | null
+          received_at: string
+          timestamp: string
+          is_from_me: boolean
+          metadata: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          user_id: string
+          external_id: string
+          sender: string
+          content?: string | null
+          received_at?: string
+          timestamp: string
+          is_from_me?: boolean
+          metadata?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          user_id?: string
+          external_id?: string
+          sender?: string
+          content?: string | null
+          received_at?: string
+          timestamp?: string
+          is_from_me?: boolean
+          metadata?: Json | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "synced_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            referencedRelation: "synced_conversations"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      // Legacy/Deprecated messages table
+      /*
+      messages: {
+        Row: {
+          id: string
+          conversation_id: string
+          user_id: string
+          external_id: string | null
+          sender: string
+          content: string | null
+          recieved_at: string
+          timestamp: string
+          is_from_me: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          user_id: string
+          external_id?: string | null
+          sender: string
+          content?: string | null
+          recieved_at?: string
+          timestamp: string
+          is_from_me?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          user_id?: string
+          external_id?: string | null
+          sender?: string
+          content?: string | null
+          recieved_at?: string
+          timestamp?: string
+          is_from_me?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      */
     }
     Views: {
       [_ in never]: never
@@ -220,7 +351,7 @@ export type Tables<
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
