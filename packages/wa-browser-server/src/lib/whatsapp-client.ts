@@ -62,6 +62,7 @@ export class WhatsAppClient extends EventEmitter {
       puppeteer: {
         headless: false,
         executablePath: executablePath,
+        protocolTimeout: 60000, // Increase Protocol Timeout to 60s (default is 30s)
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
