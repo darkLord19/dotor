@@ -61,9 +61,9 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
       const authRequest = request as AuthenticatedRequest;
       const state = JSON.stringify({
         userId: authRequest.userId,
-        redirect: process.env.APP_URL + "/settings", // Redirect back to settings after auth
+        redirect: process.env.APP_URL + "/connections", // Redirect back to connections after auth
       });
-      
+
       // We encode the state to make it URL safe
       const encodedState = Buffer.from(state).toString('base64');
       const url = getMicrosoftAuthUrl(encodedState);
@@ -78,7 +78,7 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
     async (request, reply) => {
       try {
         const { code, state } = callbackSchema.parse(request.query);
-        
+
         // Decode state
         const decodedState = JSON.parse(Buffer.from(state, 'base64').toString());
         const { userId, redirect } = decodedState;
@@ -89,10 +89,10 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Exchange code for tokens
         const tokens = await exchangeCodeForTokens(code);
-        
+
         // Get user profile
         const profile = await getUserProfile(tokens.access_token);
-        
+
         if (!supabaseAdmin) {
           throw new Error("Supabase admin client not initialized");
         }
@@ -106,11 +106,11 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
         const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
         const now = new Date().toISOString();
 
-        fastify.log.info({ 
-          userId, 
+        fastify.log.info({
+          userId,
           email: profile.email,
           expiresAt: expiresAt.toISOString(),
-          hasRefreshToken: !!tokens.refresh_token 
+          hasRefreshToken: !!tokens.refresh_token
         }, "Attempting to store microsoft connection");
 
         // Store in database using admin client (to bypass RLS for now/ensure robust write)
@@ -126,8 +126,8 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
             scopes: tokens.scope.split(' '),
             updated_at: now,
           }, {
-              onConflict: 'user_id,type',
-              ignoreDuplicates: false
+            onConflict: 'user_id,type',
+            ignoreDuplicates: false
           })
           .select();
 
@@ -140,13 +140,13 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
 
         // Redirect back to the app (using the redirect from state if provided, or default)
         const appUrl = process.env.APP_URL || process.env.WEBAPP_URL || "http://localhost:3000";
-        const finalRedirect = redirect || `${appUrl}/settings`;
-        
+        const finalRedirect = redirect || `${appUrl}/connections`;
+
         return reply.redirect(`${finalRedirect}?microsoft_connected=true`);
       } catch (error) {
         fastify.log.error(error, "Microsoft callback failed");
         const appUrl = process.env.APP_URL || process.env.WEBAPP_URL || "http://localhost:3000";
-        return reply.redirect(`${appUrl}/settings?microsoft_error=true`);
+        return reply.redirect(`${appUrl}/connections?microsoft_error=true`);
       }
     }
   );

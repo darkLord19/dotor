@@ -53,7 +53,6 @@ function AskPageContent() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
-  const [user, setUser] = useState<{ email?: string } | null>(null);
   const [extensionConnected, setExtensionConnected] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null);
   const [checkingGoogle, setCheckingGoogle] = useState(true);
@@ -90,7 +89,7 @@ function AskPageContent() {
   // Safety timeout to prevent infinite loading
   useEffect(() => {
     if (!checkingGoogle) return;
-    
+
     const timeout = setTimeout(() => {
       console.warn('[ASK PAGE] Safety timeout triggered - forcing loading state to false');
       setCheckingGoogle(false);
@@ -105,19 +104,19 @@ function AskPageContent() {
     try {
       // Check if extension is available by looking for the global variable
       // or by sending a ping message
-      const isConnected = 
-        typeof window !== 'undefined' && 
+      const isConnected =
+        typeof window !== 'undefined' &&
         (window as any).__DOTOR_EXTENSION__ === true;
-      
+
       if (isConnected) {
         setExtensionConnected(true);
         return;
       }
-      
+
       // Also try message-based check as fallback
       const pingPromise = new Promise<boolean>((resolve) => {
         const timeout = setTimeout(() => resolve(false), 1000);
-        
+
         const messageHandler = (event: MessageEvent) => {
           if (event.data && event.data.type === 'DOTOR_EXTENSION_PONG') {
             clearTimeout(timeout);
@@ -130,13 +129,13 @@ function AskPageContent() {
             resolve(event.data.extensionId !== null);
           }
         };
-        
+
         window.addEventListener('message', messageHandler);
-        
+
         // Send ping
         window.postMessage({ type: 'DOTOR_EXTENSION_PING' }, window.location.origin);
       });
-      
+
       const connected = await pingPromise;
       setExtensionConnected(connected);
     } catch {
@@ -151,11 +150,11 @@ function AskPageContent() {
     const handleContextInvalidated = (event: MessageEvent) => {
       if (event.data && event.data.type === 'DOTOR_EXTENSION_CONTEXT_INVALIDATED') {
         console.log('[ASK PAGE] Extension context invalidated - attempting direct messaging fallback');
-        
+
         // Try direct messaging if we have the extension ID and payload
         const extensionId = (window as any).__DOTOR_EXTENSION_ID__;
         const payload = event.data.payload;
-        
+
         if (extensionId && payload && typeof chrome !== 'undefined' && chrome.runtime) {
           console.log('[ASK PAGE] Attempting direct messaging with extension ID:', extensionId);
           try {
@@ -210,30 +209,30 @@ function AskPageContent() {
     const handleExtensionResults = async (event: MessageEvent) => {
       if (event.data && event.data.type === 'DOTOR_EXTENSION_RESULTS') {
         console.log('[ASK PAGE] Received results from extension:', event.data.payload);
-        
+
         const { request_id, results } = event.data.payload;
-        
+
         if (!request_id || !results) {
           console.error('[ASK PAGE] Invalid results payload:', event.data.payload);
           return;
         }
-        
+
         try {
           // Get session
           const supabase = createClient();
           const { data: { session } } = await supabase.auth.getSession();
-          
+
           if (!session) {
             console.error('[ASK PAGE] Failed to get session for submitting results');
             return;
           }
-          
+
           const backendUrl = getBackendUrl();
-          
+
           // Submit each result to the backend
           for (const result of results) {
             console.log(`[ASK PAGE] Submitting results for ${result.source}...`);
-            
+
             const res = await fetch(`${backendUrl}/ask/${request_id}/dom-results`, {
               method: 'POST',
               headers: {
@@ -246,14 +245,14 @@ function AskPageContent() {
                 error: result.error,
               }),
             });
-            
+
             if (!res.ok) {
               console.error(`[ASK PAGE] Failed to submit results for ${result.source}:`, res.status);
             } else {
               console.log(`[ASK PAGE] Successfully submitted results for ${result.source}`);
             }
           }
-          
+
         } catch (error) {
           console.error('[ASK PAGE] Error submitting extension results:', error);
         }
@@ -273,9 +272,9 @@ function AskPageContent() {
     const handleExtensionResults = (event: MessageEvent) => {
       if (event.data && event.data.type === 'DOTOR_EXTENSION_RESULTS') {
         console.log('[ASK PAGE] Received results from extension via postMessage:', event.data.payload);
-        
+
         const { request_id, results } = event.data.payload;
-        
+
         if (request_id && results) {
           submitExtensionResults(request_id, results);
         }
@@ -296,9 +295,9 @@ function AskPageContent() {
         console.warn('[ASK PAGE] Connection check timeout - aborting');
         controller.abort();
       }, 8000); // 8 second timeout
-      
+
       console.log('[ASK PAGE] Checking connection status...');
-      
+
       // Fetch connections and feature flags in parallel
       const [connectionsRes, flagsRes] = await Promise.all([
         fetch(`${backendUrl}/connections`, {
@@ -314,9 +313,9 @@ function AskPageContent() {
           signal: controller.signal,
         }).catch(() => null), // Feature flags are optional
       ]);
-      
+
       clearTimeout(timeoutId);
-      
+
       // Process feature flags
       if (flagsRes && flagsRes.ok) {
         try {
@@ -330,24 +329,24 @@ function AskPageContent() {
           console.warn('[ASK PAGE] Failed to parse feature flags:', e);
         }
       }
-      
+
       if (connectionsRes.ok) {
         try {
           const connections = await connectionsRes.json();
-          const hasEmailConnection = Array.isArray(connections) && 
-              connections.some((c: any) => c.type === 'google' || c.type === 'microsoft');
-          
+          const hasEmailConnection = Array.isArray(connections) &&
+            connections.some((c: any) => c.type === 'google' || c.type === 'microsoft');
+
           console.log('[ASK PAGE] Connection status:', hasEmailConnection);
-          
-          setGoogleStatus({ 
-              connected: hasEmailConnection,
-              // Add dummy email if microsoft is primary, or first found
-              email: connections.find((c: any) => (c.type === 'google' || c.type === 'microsoft'))?.email 
+
+          setGoogleStatus({
+            connected: hasEmailConnection,
+            // Add dummy email if microsoft is primary, or first found
+            email: connections.find((c: any) => (c.type === 'google' || c.type === 'microsoft'))?.email
           });
           setCheckingGoogle(false);
         } catch (e) {
-            console.warn('[ASK PAGE] Failed to parse connections:', e);
-            setCheckingGoogle(false);
+          console.warn('[ASK PAGE] Failed to parse connections:', e);
+          setCheckingGoogle(false);
         }
       } else {
         console.warn('[ASK PAGE] Failed to fetch connections:', connectionsRes.status);
@@ -371,28 +370,26 @@ function AskPageContent() {
     // Set up auth state listener to handle token refreshes and signouts
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       console.log(`[ASK PAGE] Auth state change: ${event}`);
-      
+
       if (event === 'SIGNED_OUT' || !session) {
         if (isMounted) {
           router.push('/login');
         }
       } else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
-        if (isMounted && session) {
-          setUser(session.user);
-        }
+        // Session refreshed or user signed in
       }
     });
 
     // Initial check - only run once
     if (!hasCheckedRef.current) {
       hasCheckedRef.current = true;
-      
+
       const checkAuth = async () => {
         console.log('[ASK PAGE] Starting auth check');
-        
+
         try {
           const { data: { session }, error } = await supabase.auth.getSession();
-          
+
           if (error || !session) {
             console.log('[ASK PAGE] No session found, redirecting to login');
             if (isMounted) {
@@ -402,20 +399,18 @@ function AskPageContent() {
             }
             return;
           }
-          
+
           if (!isMounted) return;
-          
-          setUser(session.user);
-          
+
           // Check Google connection status
           if (isMounted) {
             await checkGoogleConnection(session.access_token);
           }
         } catch (error) {
           if (!isMounted) return;
-          
+
           console.error('[ASK PAGE] Auth check error:', error);
-          
+
           setCheckingGoogle(false);
           setGoogleStatus({ connected: false });
           setInitError('Failed to initialize. Please refresh the page.');
@@ -432,17 +427,17 @@ function AskPageContent() {
         }
       });
     }
-    
+
     // Check extension connection
     checkExtension();
-    
+
     // Periodically re-check extension connection (in case it's installed after page load)
     const extensionCheckInterval = setInterval(() => {
       if (isMounted) {
         checkExtension();
       }
     }, 3000); // Check every 3 seconds
-    
+
     return () => {
       isMounted = false;
       clearInterval(extensionCheckInterval);
@@ -454,7 +449,7 @@ function AskPageContent() {
   useEffect(() => {
     const isGoogleConnected = searchParams.get('google_connected') === 'true';
     const isMicrosoftConnected = searchParams.get('microsoft_connected') === 'true';
-    
+
     if (isGoogleConnected || isMicrosoftConnected) {
       // Refresh status after successful connection
       const refreshStatus = async () => {
@@ -468,7 +463,7 @@ function AskPageContent() {
       // Clean up URL
       router.replace('/ask');
     }
-    
+
     if (searchParams.get('google_error') === 'true' || searchParams.get('microsoft_error') === 'true') {
       // Show error message
       console.error('Connection failed');
@@ -482,18 +477,18 @@ function AskPageContent() {
       // Get session
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         console.error('[ASK PAGE] Failed to get session for submitting results');
         return;
       }
-      
+
       const backendUrl = getBackendUrl();
-      
+
       // Submit each result to the backend
       for (const result of results) {
         console.log(`[ASK PAGE] Submitting results for ${result.source}...`);
-        
+
         const res = await fetch(`${backendUrl}/ask/${requestId}/dom-results`, {
           method: 'POST',
           headers: {
@@ -506,7 +501,7 @@ function AskPageContent() {
             error: result.error,
           }),
         });
-        
+
         if (!res.ok) {
           console.error(`[ASK PAGE] Failed to submit results for ${result.source}:`, res.status);
         } else {
@@ -529,9 +524,9 @@ function AskPageContent() {
     // Add user message
     const userMsgId = crypto.randomUUID();
     const assistantMsgId = crypto.randomUUID();
-    
+
     setMessages(prev => [
-      ...prev, 
+      ...prev,
       { id: userMsgId, role: 'user', content: currentQuery },
       { id: assistantMsgId, role: 'assistant', status: 'pending' }
     ]);
@@ -540,12 +535,12 @@ function AskPageContent() {
       // Get session from Next.js API route
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         router.push('/login');
         return;
       }
-      
+
       const backendUrl = getBackendUrl();
 
       const res = await fetch(`${backendUrl}/ask`, {
@@ -554,7 +549,7 @@ function AskPageContent() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           query: currentQuery,
           conversationId,
           // flags removed - sources are decided by backend
@@ -562,7 +557,7 @@ function AskPageContent() {
       });
 
       const data = await res.json();
-      
+
       if (data.conversationId) {
         setConversationId(data.conversationId);
       }
@@ -582,11 +577,11 @@ function AskPageContent() {
 
       if (data.requires_extension && data.request_id && data.instructions) {
         console.log('[ASK PAGE] Extension required, instructions:', data.instructions);
-        
+
         // Send instructions to extension if connected
         if (extensionConnected && typeof window !== 'undefined') {
           console.log('[ASK PAGE] Extension connected, sending instructions...');
-          
+
           // Set up listener for extension context invalidated
           const contextInvalidatedHandler = (event: MessageEvent) => {
             if (event.data && event.data.type === 'DOTOR_EXTENSION_CONTEXT_INVALIDATED') {
@@ -597,7 +592,7 @@ function AskPageContent() {
             }
           };
           window.addEventListener('message', contextInvalidatedHandler);
-          
+
           try {
             // Try to send message to extension - use direct messaging first, then fallback to window.postMessage
             const message = {
@@ -607,18 +602,18 @@ function AskPageContent() {
                 instructions: data.instructions,
               },
             };
-            
+
             // Try direct messaging via chrome.runtime.sendMessage (requires externally_connectable)
             // Check for extension ID from window object (set by content script)
             let extensionId = (window as any).__DOTOR_EXTENSION_ID__;
-            
+
             // If no extension ID, try to get it by checking if extension is available
             if (!extensionId && typeof chrome !== 'undefined' && chrome.runtime) {
               // Can't get extension ID directly from web page, but we can try to detect it
               // by attempting to send a message without ID (won't work, but we'll fallback)
               console.log('[ASK PAGE] Extension ID not available, will use window.postMessage');
             }
-            
+
             if (extensionId && typeof chrome !== 'undefined' && chrome.runtime) {
               console.log('[ASK PAGE] Attempting direct messaging to extension:', extensionId);
               try {
@@ -667,7 +662,7 @@ function AskPageContent() {
         } else {
           console.warn('[ASK PAGE] Extension not connected, cannot send instructions. extensionConnected:', extensionConnected);
         }
-        
+
         // Poll for results
         pollForResults(data.request_id, session.access_token);
       }
@@ -728,7 +723,7 @@ function AskPageContent() {
             }));
             return;
           }
-          
+
           // Fallback: just mark as complete
           setMessages(prev => prev.map(msg => {
             if (msg.requestId === requestId) {
@@ -804,43 +799,15 @@ function AskPageContent() {
   // Show loading state while checking Google connection
   if (checkingGoogle) {
     return (
-      <main className={styles.main}>
-        <header className={styles.header}>
-          <div className={styles.logo}>
-            <span className={styles.logoIcon}>✦</span>
-            Dotor
-          </div>
-          <div className={styles.headerRight}>
-            <div className={styles.userMenu}>
-              <button 
-                onClick={() => router.push('/settings')} 
-                className={styles.settingsButton}
-                title="Settings"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
-                </svg>
-              </button>
-              <span className={styles.userEmail}>{user?.email}</span>
-              <button onClick={handleSignOut} className={styles.signOutButton}>
-                Sign out
-              </button>
-            </div>
-          </div>
-        </header>
-        <div className={styles.container}>
-          <div className={styles.loadingState}>
-            <span className={styles.spinner} />
-            <p>Loading...</p>
-            {initError && (
-              <p style={{ marginTop: '1rem', color: 'var(--error)', fontSize: '0.875rem' }}>
-                {initError}
-              </p>
-            )}
-          </div>
-        </div>
-      </main>
+      <div className={styles.loadingState}>
+        <span className={styles.spinner} />
+        <p>Loading...</p>
+        {initError && (
+          <p style={{ marginTop: '1rem', color: 'var(--error)', fontSize: '0.875rem' }}>
+            {initError}
+          </p>
+        )}
+      </div>
     );
   }
 
@@ -848,94 +815,34 @@ function AskPageContent() {
   // Don't show if we're still checking or if status is null (might still be loading)
   if (checkingGoogle === false && googleStatus && !googleStatus.connected) {
     return (
-      <main className={styles.main}>
-        <header className={styles.header}>
-          <div className={styles.logo}>
-            <span className={styles.logoIcon}>✦</span>
-            Dotor
-          </div>
-          <div className={styles.headerRight}>
-            <div className={styles.userMenu}>
-              <button 
-                onClick={() => router.push('/settings')} 
-                className={styles.settingsButton}
-                title="Settings"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
-                </svg>
-              </button>
-              <span className={styles.userEmail}>{user?.email}</span>
-              <button onClick={handleSignOut} className={styles.signOutButton}>
-                Sign out
-              </button>
-            </div>
-          </div>
-        </header>
-        <ConnectGoogle />
-      </main>
+      <div className={styles.content}>
+        <div className={styles.container}>
+          <ConnectGoogle />
+        </div>
+      </div>
     );
   }
 
   return (
-    <main className={styles.main}>
-      <header className={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div className={styles.logo}>
-            <span className={styles.logoIcon}>✦</span>
-            Dotor
-          </div>
-          {messages.length > 0 && (
-            <button onClick={handleNewChat} className={styles.newChatButton}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              New Chat
-            </button>
-          )}
-        </div>
-        <div className={styles.headerRight}>
-          {featureFlags.enableAsyncMode && (
-            <ExtensionStatus connected={extensionConnected} />
-          )}
-          <div className={styles.userMenu}>
-            <button 
-              onClick={() => router.push('/settings')} 
-              className={styles.settingsButton}
-              title="Settings"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
-              </svg>
-            </button>
-            <span className={styles.userEmail}>{user?.email}</span>
-            <button onClick={handleSignOut} className={styles.signOutButton}>
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
-
+    <div className={styles.content}>
       <div className={styles.container}>
         {messages.length === 0 && !loading && (
           <div className={styles.hints}>
             <h3>Try asking:</h3>
             <div className={styles.hintList}>
-              <button 
-                className={styles.hint} 
+              <button
+                className={styles.hint}
                 onClick={() => setQuery("What meetings do I have this week?")}
               >
                 What meetings do I have this week?
               </button>
-              <button 
+              <button
                 className={styles.hint}
                 onClick={() => setQuery("Find emails from my manager about the project deadline")}
               >
                 Find emails from my manager about the project deadline
               </button>
-              <button 
+              <button
                 className={styles.hint}
                 onClick={() => setQuery("What did John message me about on LinkedIn?")}
               >
@@ -998,41 +905,17 @@ function AskPageContent() {
           </div>
         </form>
       </div>
-    </main>
+    </div>
   );
 }
 
 export default function AskPage() {
   return (
     <Suspense fallback={
-      <main className={styles.main}>
-        <header className={styles.header}>
-          <div className={styles.logo}>
-            <span className={styles.logoIcon}>✦</span>
-            Dotor
-          </div>
-          <div className={styles.headerRight}>
-            <div className={styles.userMenu}>
-              <button 
-                onClick={() => window.location.href = '/settings'} 
-                className={styles.settingsButton}
-                title="Settings"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-        </header>
-        <div className={styles.container}>
-          <div className={styles.loadingState}>
-            <span className={styles.spinner} />
-            <p>Loading...</p>
-          </div>
-        </div>
-      </main>
+      <div className={styles.loadingState}>
+        <span className={styles.spinner} />
+        <p>Loading...</p>
+      </div>
     }>
       <AskPageContent />
     </Suspense>

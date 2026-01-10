@@ -8,7 +8,7 @@ Dotor is a privacy-first assistant that answers questions by searching your conn
 ## Repo layout (what lives where)
 
 - `packages/backend/` — Fastify API (auth, OAuth connection setup, search, answer synthesis)
-- `packages/webapp/` — Next.js web app (UI for login/settings/ask)
+- `packages/webapp/` — Next.js web app (UI for login/connections/ask). Uses a horizontal top navigation bar (Home, Connections, Profile). The "Connections" page manages external integrations, and the "Profile" page uses a tabbed layout for personal info, security, and subscription.
 - `packages/extension/` — Chrome MV3 extension (LinkedIn + WhatsApp content scripts, sidepanel)
 - `packages/wa-browser-server/` — Fastify service that runs a *real* WhatsApp Web session in a single Chrome instance (for QR login + syncing)
 - `packages/ui/` — Shared CSS + small utilities used by webapp/extension
@@ -186,3 +186,8 @@ pnpm build
 - WA Browser Server entrypoint: `packages/wa-browser-server/src/server.ts`
 - Extension manifest: `packages/extension/manifest.json`
 - Shared styles/tokens: `packages/ui/src/variables.css`
+- Global Navigation: `packages/webapp/components/GlobalSidebar.tsx`
+- Connections Page: `packages/webapp/app/connections/page.tsx`
+- Profile & Settings: `packages/webapp/app/profile/page.tsx`
+
+
