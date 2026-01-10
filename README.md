@@ -1,5 +1,7 @@
 # Dotor
 
+New here? Start with `PROJECT_CONTEXT.md`.
+
 Privacy-first personal assistant that searches your emails, calendar, and messages without storing any data.
 
 ## Features

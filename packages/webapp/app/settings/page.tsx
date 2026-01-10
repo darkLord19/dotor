@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getBackendUrl } from '@/lib/config';
@@ -33,21 +33,21 @@ interface AvailableChat {
 
 type SettingsSection = 'profile' | 'connected-accounts';
 
-export default function SettingsPage() {
+function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
   const [user, setUser] = useState<any>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // WhatsApp state
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [whatsappLoading, setWhatsappLoading] = useState(false);
   const [whatsappError, setWhatsappError] = useState<string | null>(null);
   const [qrScreenshot, setQrScreenshot] = useState<string | null>(null);
   const [qrPolling, setQrPolling] = useState(false);
-  
+
   // Profile form state
   const [name, setName] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -68,22 +68,22 @@ export default function SettingsPage() {
   useEffect(() => {
     const isGoogleConnected = searchParams.get('google_connected') === 'true';
     const isMicrosoftConnected = searchParams.get('microsoft_connected') === 'true';
-    
+
     if (isGoogleConnected || isMicrosoftConnected) {
       setActiveSection('connected-accounts');
-      setProfileMessage({ 
-        type: 'success', 
-        text: `${isGoogleConnected ? 'Google' : 'Microsoft'} account connected successfully!` 
+      setProfileMessage({
+        type: 'success',
+        text: `${isGoogleConnected ? 'Google' : 'Microsoft'} account connected successfully!`
       });
       setTimeout(() => setProfileMessage(null), 5000);
       router.replace('/settings');
     }
-    
+
     if (searchParams.get('google_error') === 'true' || searchParams.get('microsoft_error') === 'true') {
       setActiveSection('connected-accounts');
-      setProfileMessage({ 
-        type: 'error', 
-        text: `Failed to connect ${searchParams.get('google_error') === 'true' ? 'Google' : 'Microsoft'} account.` 
+      setProfileMessage({
+        type: 'error',
+        text: `Failed to connect ${searchParams.get('google_error') === 'true' ? 'Google' : 'Microsoft'} account.`
       });
       router.replace('/settings');
     }
@@ -101,33 +101,33 @@ export default function SettingsPage() {
   useEffect(() => {
     const checkAuth = async () => {
       const backendUrl = getBackendUrl();
-      
+
       try {
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (!session) {
           router.push('/login');
           return;
         }
-        
+
         const token = session.access_token;
         setAccessToken(token);
-        
+
         setUser(session.user);
         setName(session.user.user_metadata?.full_name || session.user.user_metadata?.name || '');
-        
+
         // Fetch connections
         const connectionsResponse = await fetch(`${backendUrl}/connections`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
         });
-        
+
         if (connectionsResponse.ok) {
           const connectionsData = await connectionsResponse.json();
           setConnections(connectionsData);
-          
+
           // Load existing sync config
           const waConn = connectionsData.find((c: any) => c.type === 'whatsapp');
           if (waConn?.syncConfig?.monitoredChats) {
@@ -141,7 +141,7 @@ export default function SettingsPage() {
             'Authorization': `Bearer ${token}`,
           },
         });
-        
+
         if (waResponse.ok) {
           const waData = await waResponse.json();
           setWhatsappStatus(waData);
@@ -165,7 +165,7 @@ export default function SettingsPage() {
       setQrPolling(false);
       return;
     }
-    
+
     // Don't poll if already linked (live status from browser)
     if (whatsappStatus?.isLinked) {
       setQrScreenshot(null);
@@ -179,13 +179,13 @@ export default function SettingsPage() {
 
     const pollScreenshot = async () => {
       if (cancelled) return;
-      
+
       const backendUrl = getBackendUrl();
-      
+
       try {
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (!session || cancelled) return;
 
         // First check status to see if already linked
@@ -194,11 +194,11 @@ export default function SettingsPage() {
             'Authorization': `Bearer ${session.access_token}`,
           },
         });
-        
+
         if (statusResponse.ok) {
           const status = await statusResponse.json();
           setWhatsappStatus(status);
-          
+
           // Stop polling if linked (live) or browser stopped
           if (status.isLinked || !status.browserRunning) {
             setQrScreenshot(null);
@@ -221,7 +221,7 @@ export default function SettingsPage() {
 
         if (screenshotResponse.ok) {
           const data = await screenshotResponse.json();
-          
+
           if (data.linked) {
             // Browser is now linked, stop polling
             setQrScreenshot(null);
@@ -229,7 +229,7 @@ export default function SettingsPage() {
             cancelled = true;
             return;
           }
-          
+
           if (data.image && !cancelled) {
             // Check if image is already a Data URL
             if (data.image.startsWith('data:')) {
@@ -263,17 +263,17 @@ export default function SettingsPage() {
   const handleUpdateName = async () => {
     setUpdating(true);
     setProfileMessage(null);
-    
+
     try {
       const backendUrl = getBackendUrl();
-      
+
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await fetch(`${backendUrl}/account/profile`, {
         method: 'PUT',
         headers: {
@@ -282,13 +282,13 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({ name }),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update name');
       }
-      
+
       setProfileMessage({ type: 'success', text: 'Name updated successfully' });
       setTimeout(() => setProfileMessage(null), 3000);
     } catch (error: any) {
@@ -303,25 +303,25 @@ export default function SettingsPage() {
       setProfileMessage({ type: 'error', text: 'New passwords do not match' });
       return;
     }
-    
+
     if (newPassword.length < 6) {
       setProfileMessage({ type: 'error', text: 'Password must be at least 6 characters' });
       return;
     }
-    
+
     setUpdating(true);
     setProfileMessage(null);
-    
+
     try {
       const backendUrl = getBackendUrl();
-      
+
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await fetch(`${backendUrl}/account/password`, {
         method: 'PUT',
         headers: {
@@ -330,13 +330,13 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({ password: newPassword }),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to update password');
       }
-      
+
       setProfileMessage({ type: 'success', text: 'Password updated successfully' });
       setCurrentPassword('');
       setNewPassword('');
@@ -352,17 +352,17 @@ export default function SettingsPage() {
   const handleRequestAccountDeletion = async () => {
     setUpdating(true);
     setProfileMessage(null);
-    
+
     try {
       const backendUrl = getBackendUrl();
-      
+
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       // Call backend to request account deletion
       const response = await fetch(`${backendUrl}/account/delete`, {
         method: 'POST',
@@ -371,18 +371,18 @@ export default function SettingsPage() {
           'Content-Type': 'application/json',
         },
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to request account deletion');
       }
-      
-      setProfileMessage({ 
-        type: 'success', 
-        text: 'Account deleted successfully. Redirecting to login...' 
+
+      setProfileMessage({
+        type: 'success',
+        text: 'Account deleted successfully. Redirecting to login...'
       });
       setShowDeleteConfirm(false);
-      
+
       // Redirect to login after a short delay
       setTimeout(() => {
         router.push('/login');
@@ -396,25 +396,25 @@ export default function SettingsPage() {
 
   const handleConnect = async (type: string) => {
     const backendUrl = getBackendUrl();
-    
+
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await fetch(`${backendUrl}/${type}/auth-url`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to get auth URL');
       }
-      
+
       const { url } = await response.json();
       window.location.href = url;
     } catch (error) {
@@ -424,29 +424,29 @@ export default function SettingsPage() {
 
   const handleDisconnect = async (type: string) => {
     const backendUrl = getBackendUrl();
-    
+
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await fetch(`${backendUrl}/${type}/disconnect`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       if (response.ok) {
         const connectionsResponse = await fetch(`${backendUrl}/connections`, {
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
           },
         });
-        
+
         if (connectionsResponse.ok) {
           const data = await connectionsResponse.json();
           setConnections(data);
@@ -462,35 +462,35 @@ export default function SettingsPage() {
     const backendUrl = getBackendUrl();
     setWhatsappLoading(true);
     setWhatsappError(null);
-    
+
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await fetch(`${backendUrl}/wa/browser/spawn`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to start browser');
       }
-      
+
       // Refresh status
       const statusResponse = await fetch(`${backendUrl}/wa/status`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       if (statusResponse.ok) {
         setWhatsappStatus(await statusResponse.json());
       }
@@ -505,27 +505,27 @@ export default function SettingsPage() {
     const backendUrl = getBackendUrl();
     setWhatsappLoading(true);
     setWhatsappError(null);
-    
+
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await fetch(`${backendUrl}/wa/disconnect`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to disconnect');
       }
-      
+
       setWhatsappStatus({
         connected: false,
         status: 'disconnected',
@@ -545,29 +545,29 @@ export default function SettingsPage() {
   const handleWhatsAppStop = async () => {
     const backendUrl = getBackendUrl();
     setWhatsappLoading(true);
-    
+
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       await fetch(`${backendUrl}/wa/browser/stop`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       // Refresh status
       const statusResponse = await fetch(`${backendUrl}/wa/status`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       if (statusResponse.ok) {
         setWhatsappStatus(await statusResponse.json());
       }
@@ -582,28 +582,28 @@ export default function SettingsPage() {
     const backendUrl = getBackendUrl();
     setWhatsappLoading(true);
     setWhatsappError(null);
-    
+
     try {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await fetch(`${backendUrl}/wa/sync/trigger`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to trigger sync');
       }
-      
+
       // Poll for status update after a few seconds
       setTimeout(async () => {
         const statusResponse = await fetch(`${backendUrl}/wa/status`, {
@@ -611,7 +611,7 @@ export default function SettingsPage() {
             'Authorization': `Bearer ${session.access_token}`,
           },
         });
-        
+
         if (statusResponse.ok) {
           setWhatsappStatus(await statusResponse.json());
         }
@@ -626,30 +626,30 @@ export default function SettingsPage() {
   const handleLoadChats = async () => {
     setLoadingChats(true);
     setAvailableChats([]);
-    
+
     try {
       const backendUrl = getBackendUrl();
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       const response = await fetch(`${backendUrl}/wa/live-chats`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to load chats');
       }
-      
+
       setAvailableChats(data.chats);
-      
+
       if (data.chats.length === 0) {
         setProfileMessage({ type: 'success', text: 'No recent chats found. Syncing top 5 chats by default.' });
         setTimeout(() => setProfileMessage(null), 5000);
@@ -674,16 +674,16 @@ export default function SettingsPage() {
   const handleSaveSyncConfig = async () => {
     setSavingConfig(true);
     setProfileMessage(null);
-    
+
     try {
       const backendUrl = getBackendUrl();
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         throw new Error('Not authenticated');
       }
-      
+
       // Save the sync configuration
       const response = await fetch(`${backendUrl}/wa/config`, {
         method: 'POST',
@@ -693,13 +693,13 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({ monitoredChats }),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.error || 'Failed to save sync configuration');
       }
-      
+
       setProfileMessage({ type: 'success', text: 'Sync configuration saved successfully' });
       setTimeout(() => setProfileMessage(null), 3000);
     } catch (error: any) {
@@ -728,8 +728,8 @@ export default function SettingsPage() {
           Dotor
         </div>
         <div className={styles.headerRight}>
-          <button 
-            onClick={() => router.push('/ask')} 
+          <button
+            onClick={() => router.push('/ask')}
             className={styles.backButton}
           >
             ← Back
@@ -761,7 +761,7 @@ export default function SettingsPage() {
           {activeSection === 'profile' && (
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Profile</h2>
-              
+
               {profileMessage && (
                 <div className={`${styles.message} ${styles[`message${profileMessage.type === 'success' ? 'Success' : 'Error'}`]}`}>
                   {profileMessage.text}
@@ -881,16 +881,16 @@ export default function SettingsPage() {
           {activeSection === 'connected-accounts' && (
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Connected Accounts</h2>
-              
+
               {/* Google Account */}
               <div className={styles.accountProvider}>
                 <div className={styles.providerHeader}>
                   <div className={styles.providerInfo}>
                     <svg className={styles.googleIcon} viewBox="0 0 24 24" width="24" height="24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                     </svg>
                     <span className={styles.providerName}>Google</span>
                   </div>
@@ -913,13 +913,13 @@ export default function SettingsPage() {
                 {isGoogleConnected && (() => {
                   const googleConn = connections.find(conn => conn.type === 'google');
                   if (!googleConn) return null;
-                  
+
                   const scopeLabels: Record<string, string> = {
                     'gmail.readonly': '📧 Gmail (read-only)',
                     'calendar.readonly': '📅 Calendar (read-only)',
                     'userinfo.email': '👤 Email address',
                   };
-                  
+
                   const displayedScopes = googleConn.scopes
                     .map(scope => {
                       if (scope.includes('gmail')) return scopeLabels['gmail.readonly'];
@@ -928,7 +928,7 @@ export default function SettingsPage() {
                       return null;
                     })
                     .filter(Boolean) as string[];
-                  
+
                   return (
                     <div className={styles.connectionDetails}>
                       {googleConn.email && (
@@ -960,7 +960,7 @@ export default function SettingsPage() {
                 <div className={styles.providerHeader}>
                   <div className={styles.providerInfo}>
                     <svg className={styles.whatsappIcon} viewBox="0 0 24 24" width="24" height="24">
-                      <path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      <path fill="#25D366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
                     </svg>
                     <span className={styles.providerName}>WhatsApp</span>
                   </div>
@@ -990,11 +990,11 @@ export default function SettingsPage() {
                     </button>
                   )}
                 </div>
-                
+
                 {whatsappError && (
                   <div className={styles.waError}>{whatsappError}</div>
                 )}
-                
+
                 {whatsappStatus?.browserRunning && !whatsappStatus?.isLinked && (
                   <div className={styles.waQrPrompt}>
                     <div className={styles.waQrHeader}>
@@ -1004,12 +1004,12 @@ export default function SettingsPage() {
                         <p>Open WhatsApp on your phone → Settings → Linked Devices → Link a Device</p>
                       </div>
                     </div>
-                    
+
                     {qrScreenshot ? (
                       <div className={styles.waQrImageContainer}>
-                        <img 
-                          src={qrScreenshot} 
-                          alt="WhatsApp QR Code" 
+                        <img
+                          src={qrScreenshot}
+                          alt="WhatsApp QR Code"
                           className={styles.waQrImage}
                         />
                         {qrPolling && (
@@ -1030,13 +1030,13 @@ export default function SettingsPage() {
                         Starting browser...
                       </div>
                     )}
-                    
+
                     <p className={styles.waQrNote}>
                       Screenshot refreshes every 2 seconds. Scan with your phone to connect.
                     </p>
                   </div>
                 )}
-                
+
                 {whatsappStatus?.connected && (
                   <div className={styles.connectionDetails}>
                     <div className={styles.waStatus}>
@@ -1075,60 +1075,60 @@ export default function SettingsPage() {
                       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
                         Select specific conversations to sync. They will be synced slowly with random delays to avoid bot detection.
                       </p>
-                      
+
                       <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                        <button 
-                          onClick={handleLoadChats} 
+                        <button
+                          onClick={handleLoadChats}
                           disabled={loadingChats || whatsappLoading}
                           className={styles.syncButton}
                           style={{ fontSize: '0.85rem', padding: '6px 12px' }}
                         >
                           {loadingChats ? 'Loading Chats...' : 'Load Recent Chats'}
                         </button>
-                        
-                        <button 
-                          onClick={handleSaveSyncConfig} 
+
+                        <button
+                          onClick={handleSaveSyncConfig}
                           disabled={savingConfig}
-                          className={styles.connectButton} 
+                          className={styles.connectButton}
                           style={{ fontSize: '0.85rem', padding: '6px 12px', background: savingConfig ? '#555' : undefined }}
                         >
                           {savingConfig ? 'Saving...' : 'Save Selection'}
                         </button>
                       </div>
-                      
+
                       {availableChats.length > 0 && (
                         <div style={{
-                          maxHeight: '200px', 
-                          overflowY: 'auto', 
-                          background: 'var(--bg-secondary)', 
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                          background: 'var(--bg-secondary)',
                           padding: '10px',
                           borderRadius: '8px',
                           border: '1px solid var(--border-color)'
                         }}>
                           {availableChats.map(chat => (
                             <label key={chat.id} style={{
-                              padding: '8px', 
-                              display: 'flex', 
+                              padding: '8px',
+                              display: 'flex',
                               alignItems: 'center',
                               cursor: 'pointer',
                               borderBottom: '1px solid var(--border-color)',
                               fontSize: '0.9rem'
                             }}>
-                              <input 
-                                type="checkbox" 
+                              <input
+                                type="checkbox"
                                 checked={monitoredChats.includes(chat.name)}
                                 onChange={() => toggleChat(chat.name)}
                                 style={{ marginRight: '10px' }}
                               />
                               <span>{chat.name}</span>
                               {chat.unreadCount > 0 && (
-                                <span style={{ 
-                                  marginLeft: 'auto', 
-                                  background: '#25D366', 
-                                  color: 'white', 
-                                  borderRadius: '999px', 
-                                  padding: '2px 6px', 
-                                  fontSize: '0.7em' 
+                                <span style={{
+                                  marginLeft: 'auto',
+                                  background: '#25D366',
+                                  color: 'white',
+                                  borderRadius: '999px',
+                                  padding: '2px 6px',
+                                  fontSize: '0.7em'
                                 }}>
                                   {chat.unreadCount}
                                 </span>
@@ -1137,7 +1137,7 @@ export default function SettingsPage() {
                           ))}
                         </div>
                       )}
-                      
+
                       <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                         {monitoredChats.length === 0 ? (
                           <span>Syncing: <strong>Top 5 recent chats (Default)</strong></span>
@@ -1162,7 +1162,7 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
-                
+
                 {!whatsappStatus?.connected && !whatsappStatus?.browserRunning && (
                   <div className={styles.waInfo}>
                     <p>Connect your WhatsApp account to sync messages.</p>
@@ -1181,10 +1181,10 @@ export default function SettingsPage() {
                 <div className={styles.providerHeader}>
                   <div className={styles.providerInfo}>
                     <svg className={styles.googleIcon} viewBox="0 0 23 23" width="24" height="24">
-                      <path fill="#f35325" d="M1 1h10v10H1z"/>
-                      <path fill="#81bc06" d="M12 1h10v10H12z"/>
-                      <path fill="#05a6f0" d="M1 12h10v10H1z"/>
-                      <path fill="#ffba08" d="M12 12h10v10H12z"/>
+                      <path fill="#f35325" d="M1 1h10v10H1z" />
+                      <path fill="#81bc06" d="M12 1h10v10H12z" />
+                      <path fill="#05a6f0" d="M1 12h10v10H1z" />
+                      <path fill="#ffba08" d="M12 12h10v10H12z" />
                     </svg>
                     <span className={styles.providerName}>Outlook</span>
                   </div>
@@ -1207,7 +1207,7 @@ export default function SettingsPage() {
                 {isMicrosoftConnected && (() => {
                   const msConn = connections.find(conn => conn.type === 'microsoft');
                   if (!msConn) return null;
-                  
+
                   return (
                     <div className={styles.connectionDetails}>
                       {msConn.email && (
@@ -1235,5 +1235,13 @@ export default function SettingsPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className={styles.loading}>Loading...</div>}>
+      <SettingsContent />
+    </Suspense>
   );
 }

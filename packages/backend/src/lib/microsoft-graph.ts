@@ -47,13 +47,16 @@ export interface OutlookEvent {
 export async function searchOutlook(accessToken: string, query: string, limit: number = 10): Promise<OutlookEmail[]> {
   // Use $search for newer search or $filter
   // $search="query"
+  // Note: We wrap the query in quotes as required by Microsoft Graph API for KQL
   const params = new URLSearchParams({
-    '$search': `"${query}"`,
+    '$search': `"${query.replace(/"/g, '\\"')}"`,
     '$top': limit.toString(),
     '$select': 'id,subject,bodyPreview,receivedDateTime,webLink,from,toRecipients'
   });
 
-  const response = await fetch(`${GRAPH_API}/me/messages?${params.toString()}`, {
+  const url = `${GRAPH_API}/me/messages?${params.toString()}`;
+
+  const response = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Prefer': 'outlook.body-content-type="text"'
@@ -79,7 +82,9 @@ export async function getOutlookEvents(accessToken: string, start: Date, end: Da
     '$top': '50'
   });
 
-  const response = await fetch(`${GRAPH_API}/me/calendar/calendarView?${params.toString()}`, {
+  const url = `${GRAPH_API}/me/calendar/calendarView?${params.toString()}`;
+
+  const response = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Prefer': 'outlook.timezone="UTC"'

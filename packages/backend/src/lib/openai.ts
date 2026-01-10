@@ -29,13 +29,34 @@ export const GmailQueryPlanSchema = z.object({
     participants: z.array(z.string()).nullable(),
     keywords: z.array(z.string()).nullable(),
     hasAttachment: z.boolean().nullable(),
-    labels: z.array(z.string()).nullable(),
-    categories: z.array(z.string()).nullable(),
+    labels: z.array(z.string()).nullable().optional(),
+    categories: z.array(z.string()).nullable().optional(),
   }),
   explanation: z.string().describe('Brief explanation of the search strategy'),
 });
 
 export type GmailQueryPlan = z.infer<typeof GmailQueryPlanSchema>;
+
+// Schema for Outlook query plan
+export const OutlookQueryPlanSchema = z.object({
+  outlookQuery: z.string().describe('The optimized Outlook/Microsoft Graph search query string'),
+  intent: z.enum(['search', 'count', 'summary', 'meetings']).describe('The intent of the user query'),
+  dateRange: z.object({
+    days: z.number().nullable(),
+  }).nullable(),
+  filters: z.object({
+    segments: z.array(z.string()),
+    negatedSegments: z.array(z.string()),
+    participants: z.array(z.string()).nullable(),
+    keywords: z.array(z.string()).nullable(),
+    hasAttachment: z.boolean().nullable(),
+    labels: z.array(z.string()).nullable().optional(),
+    categories: z.array(z.string()).nullable().optional(),
+  }),
+  explanation: z.string().describe('Brief explanation of the search strategy'),
+});
+
+export type OutlookQueryPlan = z.infer<typeof OutlookQueryPlanSchema>;
 
 // Schema for WhatsApp query plan
 export const WhatsAppQueryPlanSchema = z.object({
@@ -52,6 +73,7 @@ export type WhatsAppQueryPlan = z.infer<typeof WhatsAppQueryPlanSchema>;
 // Schema for determining required data sources
 export const QueryAnalysisSchema = z.object({
   needsGmail: z.boolean(),
+  needsOutlook: z.boolean(),
   needsCalendar: z.boolean(),
   needsLinkedIn: z.boolean(),
   needsWhatsApp: z.boolean(),
@@ -72,6 +94,7 @@ export interface Message {
   metadata?: {
     queryAnalysis?: QueryAnalysis;
     gmailPlan?: GmailQueryPlan;
+    outlookPlan?: OutlookQueryPlan;
     whatsappPlan?: WhatsAppQueryPlan;
   };
 }
@@ -138,6 +161,7 @@ export async function analyzeQuery(userQuery: string, conversationHistory: Messa
 export const UnifiedQueryPlanSchema = z.object({
   analysis: z.object({
     needsGmail: z.boolean(),
+    needsOutlook: z.boolean(),
     needsCalendar: z.boolean(),
     needsWhatsApp: z.boolean(),
     // LinkedIn deprecated/stubbed
@@ -148,6 +172,7 @@ export const UnifiedQueryPlanSchema = z.object({
     }).nullable().optional(),
   }),
   gmail: GmailQueryPlanSchema.nullable().optional(),
+  outlook: OutlookQueryPlanSchema.nullable().optional(),
   whatsapp: WhatsAppQueryPlanSchema.nullable().optional(),
 });
 
@@ -155,12 +180,12 @@ export type UnifiedQueryPlan = z.infer<typeof UnifiedQueryPlanSchema>;
 
 // Unified planning function
 export async function planQuery(
-  userQuery: string, 
-  conversationHistory: Message[] = [], 
+  userQuery: string,
+  conversationHistory: Message[] = [],
   flags: FeatureFlags
 ): Promise<UnifiedQueryPlan> {
   const todayStr = new Date().toISOString().split('T')[0]!;
-  
+
   const response = await openai.chat.completions.create({
     model: DEFAULT_MODEL,
     messages: [
@@ -168,7 +193,8 @@ export async function planQuery(
         role: 'system',
         content: getUnifiedQueryPlanPrompt(todayStr, {
           enableWhatsApp: !!flags.enableWhatsApp,
-          enableGmail: !!flags.enableGmail
+          enableGmail: !!flags.enableGmail,
+          enableOutlook: !!flags.enableOutlook
         }) + "\n\n=== CONVERSATION HISTORY ===\nUse the following conversation history to resolve references.",
       },
       ...conversationHistory.map(msg => ({

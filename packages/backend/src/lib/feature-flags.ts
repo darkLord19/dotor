@@ -12,6 +12,7 @@ export interface FeatureFlags {
   
   // API-based sources
   enableGmail: boolean;
+  enableOutlook: boolean;
 
   // Response mode: sync (Gmail only) vs async (with extension)
   enableAsyncMode: boolean;
@@ -22,6 +23,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   enableLinkedIn: false,
   enableWhatsApp: false,
   enableGmail: true,
+  enableOutlook: true,
   enableAsyncMode: false,
 };
 
@@ -37,6 +39,9 @@ function getEnvFlags(): Partial<FeatureFlags> {
   }
   if (process.env.FF_ENABLE_GMAIL !== undefined) {
     flags.enableGmail = process.env.FF_ENABLE_GMAIL === 'true';
+  }
+  if (process.env.FF_ENABLE_OUTLOOK !== undefined) {
+    flags.enableOutlook = process.env.FF_ENABLE_OUTLOOK === 'true';
   }
   if (process.env.FF_ENABLE_ASYNC_MODE !== undefined) {
     flags.enableAsyncMode = process.env.FF_ENABLE_ASYNC_MODE === 'true';
@@ -79,6 +84,7 @@ export async function getFeatureFlags(userId?: string): Promise<FeatureFlags> {
             enableLinkedIn: gf.enable_linkedin ?? DEFAULT_FLAGS.enableLinkedIn,
             enableWhatsApp: gf.enable_whatsapp ?? DEFAULT_FLAGS.enableWhatsApp,
             enableGmail: gf.enable_gmail ?? DEFAULT_FLAGS.enableGmail,
+            enableOutlook: gf.enable_outlook ?? DEFAULT_FLAGS.enableOutlook,
             enableAsyncMode: gf.enable_async_mode ?? DEFAULT_FLAGS.enableAsyncMode,
           };
           
@@ -106,6 +112,9 @@ export async function getFeatureFlags(userId?: string): Promise<FeatureFlags> {
           }
           if (uf.enable_gmail !== null && uf.enable_gmail !== undefined) {
             flags.enableGmail = uf.enable_gmail;
+          }
+          if (uf.enable_outlook !== null && uf.enable_outlook !== undefined) {
+            flags.enableOutlook = uf.enable_outlook;
           }
           if (uf.enable_async_mode !== null) {
             flags.enableAsyncMode = uf.enable_async_mode;
@@ -139,6 +148,7 @@ export function isExtensionEnabled(flags: FeatureFlags): boolean {
 export function filterAnalysisByFlags(
   analysis: {
     needsGmail: boolean;
+    needsOutlook?: boolean;
     needsLinkedIn: boolean;
     needsWhatsApp: boolean;
     linkedInKeywords?: string[] | null | undefined;
@@ -148,6 +158,7 @@ export function filterAnalysisByFlags(
   flags: FeatureFlags
 ): {
   needsGmail: boolean;
+  needsOutlook: boolean;
   needsLinkedIn: boolean;
   needsWhatsApp: boolean;
   linkedInKeywords: string[] | null;
@@ -155,6 +166,7 @@ export function filterAnalysisByFlags(
 } {
   return {
     needsGmail: flags.enableGmail && analysis.needsGmail,
+    needsOutlook: flags.enableOutlook && (analysis.needsOutlook ?? false),
     needsLinkedIn: flags.enableLinkedIn && analysis.needsLinkedIn,
     needsWhatsApp: flags.enableWhatsApp && analysis.needsWhatsApp,
     linkedInKeywords: flags.enableLinkedIn ? (analysis.linkedInKeywords ?? null) : null,

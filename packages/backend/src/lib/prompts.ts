@@ -199,7 +199,7 @@ Respond with JSON only.`;
 export const getQueryAnalysisPrompt = (todayStr: string, flags: { enableLinkedIn: boolean; enableWhatsApp: boolean; enableGmail: boolean }) => {
   const { enableLinkedIn, enableWhatsApp, enableGmail } = flags;
 
-  const gmailRule = enableGmail 
+  const gmailRule = enableGmail
     ? "1. Gmail should be TRUE for almost all sales queries (it's the primary source)"
     : "1. Gmail is DISABLED. Set needsGmail to FALSE.";
 
@@ -405,13 +405,17 @@ TODAY'S DATE: ${today}
 `;
 };
 
-export const getUnifiedQueryPlanPrompt = (todayStr: string, flags: { enableWhatsApp: boolean; enableGmail: boolean }) => {
-  const { enableWhatsApp, enableGmail } = flags;
+export const getUnifiedQueryPlanPrompt = (todayStr: string, flags: { enableWhatsApp: boolean; enableGmail: boolean; enableOutlook: boolean }) => {
+  const { enableWhatsApp, enableGmail, enableOutlook } = flags;
 
   // Rules for enabling sources
-  const gmailRule = enableGmail 
+  const gmailRule = enableGmail
     ? "Gmail is ENABLED. Set 'needsGmail' to TRUE for email-related questions, documents, pricing, contracts, or general inquiries."
     : "Gmail is DISABLED. Set 'needsGmail' to FALSE.";
+
+  const outlookRule = enableOutlook
+    ? "Outlook is ENABLED. Set 'needsOutlook' to TRUE for email-related questions (similar to Gmail targets)."
+    : "Outlook is DISABLED. Set 'needsOutlook' to FALSE.";
 
   const whatsAppRule = enableWhatsApp
     ? "WhatsApp is ENABLED. Set 'needsWhatsApp' to TRUE for questions about casual chats, immediate updates, personal coordination, or specific message history."
@@ -424,14 +428,27 @@ TODAY'S DATE: ${todayStr}
 
 === ENABLED SOURCES ===
 1. ${gmailRule}
-2. ${whatsAppRule}
-3. Calendar: Always ENABLED for schedule, meetings, events.
+2. ${outlookRule}
+3. ${whatsAppRule}
+4. Calendar: Always ENABLED for schedule, meetings, events.
 
-=== GMAIL SEARCH RULES ===
-- Convert natural language to strictly valid Gmail search operators.
-- ALLOWED: from:, to:, subject:, has:attachment, filename:, after:, before:, newer_than:, is:unread.
-- STRICT 6-MONTH LIMIT: Always apply 'newer_than:180d' unless the user explicitly asks for older items.
-- Negation: use '-' (e.g., -from:me).
+=== GMAIL & OUTLOOK SEARCH RULES ===
+- Convert natural language to strictly valid search operators.
+- GMAIL ALLOWED: from:, to:, subject:, has:attachment, filename:, after:, before:, newer_than:, is:unread.
+- OUTLOOK (KQL) ALLOWED: 
+  - from:, to:, cc:, bcc:, subject:, participants: (from/to/cc/bcc)
+  - attachmentnames: (filename search)
+  - hasattachment:true|false
+  - importance:high|medium|low
+  - kind:email|meetings|notes|tasks|posts
+  - isread:true|false
+  - category:"Name"
+  - size>BYTES or size:BYTES..BYTES
+  - received:YYYY-MM-DD or received:YYYY-MM-DD..YYYY-MM-DD
+- STRICT 6-MONTH LIMIT: Always apply date filters (e.g. newer_than:180d for Gmail, received:YYYY-MM-DD..YYYY-MM-DD for Outlook) unless the user explicitly asks for older items.
+- OUTLOOK DATE RULES: Use ISO format YYYY-MM-DD. For relative ranges, calculate the dates based on TODAY'S DATE.
+- Use '..' for ranges in Outlook (e.g. received:2025-01-10..2026-01-10).
+- Negation: use '-' for Gmail (e.g., -from:me), and NOT for Outlook OR prefix with '-' (e.g. NOT from:me or -from:me).
 
 === WHATSAPP SEARCH RULES ===
 - Extract broad keywords for message content search.
@@ -444,6 +461,7 @@ Return a single JSON object matching this schema:
 {
   "analysis": {
     "needsGmail": boolean,
+    "needsOutlook": boolean,
     "needsCalendar": boolean,
     "needsWhatsApp": boolean,
     "calendarDateRange": { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" } | null
@@ -461,6 +479,19 @@ Return a single JSON object matching this schema:
     },
     "explanation": string
   } | null,                       // Null if needsGmail is false
+  "outlook": {
+    "outlookQuery": string,       // The actual search query string (KQL compatible)
+    "intent": "search" | "count" | "summary" | "meetings",
+    "dateRange": { "days": number | null } | null,
+    "filters": {
+      "segments": string[],
+      "negatedSegments": string[],
+      "participants": string[] | null,
+      "keywords": string[] | null,
+      "hasAttachment": boolean | null
+    },
+    "explanation": string
+  } | null,                       // Null if needsOutlook is false
   "whatsapp": {
     "keywords": string[],         // Tokens to search for
     "sender": string | null,      // Specific sender name filter
@@ -474,13 +505,20 @@ Return a single JSON object matching this schema:
 User: "pricing from John"
 JSON:
 {
-  "analysis": { "needsGmail": true, "needsWhatsApp": true, "needsCalendar": false, "calendarDateRange": null },
+  "analysis": { "needsGmail": true, "needsOutlook": true, "needsWhatsApp": true, "needsCalendar": false, "calendarDateRange": null },
   "gmail": {
     "gmailQuery": "from:John (pricing OR quote OR cost) newer_than:180d",
     "intent": "search",
     "dateRange": { "days": 180 },
     "filters": { "segments": ["from:John", "pricing", "quote", "cost"], "negatedSegments": [], "participants": ["John"], "keywords": ["pricing"], "hasAttachment": null },
     "explanation": "Searching emails from John about pricing"
+  },
+  "outlook": {
+    "outlookQuery": "from:John (pricing OR quote OR cost) received:2025-07-10..2026-01-10",
+    "intent": "search",
+    "dateRange": { "days": 180 },
+    "filters": { "segments": ["from:John", "pricing", "quote", "cost"], "negatedSegments": [], "participants": ["John"], "keywords": ["pricing"], "hasAttachment": null },
+    "explanation": "Searching emails from John about pricing within last 6 months"
   },
   "whatsapp": {
     "keywords": ["pricing", "quote", "cost"],
@@ -490,11 +528,33 @@ JSON:
   }
 }
 
+User: "high importance emails from last week"
+JSON:
+{
+  "analysis": { "needsGmail": true, "needsOutlook": true, "needsCalendar": false, "needsWhatsApp": false, "needsLinkedIn": false, "calendarDateRange": null },
+  "gmail": {
+    "gmailQuery": "is:important newer_than:7d",
+    "intent": "search",
+    "dateRange": { "days": 7 },
+    "filters": { "segments": ["is:important"], "negatedSegments": [], "participants": null, "keywords": [], "hasAttachment": null },
+    "explanation": "Searching important emails from last week"
+  },
+  "outlook": {
+    "outlookQuery": "importance:high received:2026-01-03..2026-01-10",
+    "intent": "search",
+    "dateRange": { "days": 7 },
+    "filters": { "segments": ["importance:high"], "negatedSegments": [], "participants": null, "keywords": [], "hasAttachment": null },
+    "explanation": "Searching high importance emails from last week"
+  },
+  "whatsapp": null
+}
+
 User: "meeting next week"
 JSON:
 {
-  "analysis": { "needsGmail": false, "needsWhatsApp": false, "needsCalendar": true, "calendarDateRange": { "start": "...", "end": "..." } },
+  "analysis": { "needsGmail": false, "needsOutlook": false, "needsWhatsApp": false, "needsCalendar": true, "calendarDateRange": { "start": "...", "end": "..." } },
   "gmail": null,
+  "outlook": null,
   "whatsapp": null
 }
 

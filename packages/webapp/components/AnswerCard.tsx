@@ -16,6 +16,7 @@ interface Citation {
   from?: string;
   subject?: string;
   date?: string;
+  recipients?: string;
 }
 
 interface Answer {
@@ -67,12 +68,12 @@ function parseMarkdown(text: string, citations: Citation[]): string {
     })
     // Line breaks
     .replace(/\n/g, '<br />');
-  
+
   // Handle bullet points: lines starting with "- "
   const lines = html.split('<br />');
   let inList = false;
   const processedLines: string[] = [];
-  
+
   for (const line of lines) {
     const trimmedLine = line.trim();
     if (trimmedLine.startsWith('- ')) {
@@ -89,17 +90,17 @@ function parseMarkdown(text: string, citations: Citation[]): string {
       processedLines.push(line);
     }
   }
-  
+
   if (inList) {
     processedLines.push('</ul>');
   }
-  
+
   return processedLines.join('');
 }
 
 export function AnswerCard({ answer }: AnswerCardProps) {
   const formattedAnswer = useMemo(
-    () => parseMarkdown(answer.answer, answer.citations), 
+    () => parseMarkdown(answer.answer, answer.citations),
     [answer.answer, answer.citations]
   );
 
@@ -117,7 +118,7 @@ export function AnswerCard({ answer }: AnswerCardProps) {
   return (
     <div className={styles.card}>
       <div className={styles.content}>
-        <div 
+        <div
           className={styles.answer}
           dangerouslySetInnerHTML={{ __html: formattedAnswer }}
         />

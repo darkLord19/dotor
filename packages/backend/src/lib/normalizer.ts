@@ -17,6 +17,7 @@ export function normalizeGmailResults(messages: GmailMessage[]): SearchHit[] {
       subject: msg.subject,
       messageId: msg.id,
       threadId: msg.threadId,
+      recipients: msg.to,
     },
     relevance: 1.0,
   }));
@@ -68,6 +69,8 @@ export function normalizeOutlookMailResults(messages: OutlookEmail[]): SearchHit
       sender: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address,
       subject: msg.subject,
       messageId: msg.id,
+      webLink: msg.webLink,
+      recipients: msg.toRecipients.map(r => r.emailAddress.name || r.emailAddress.address).join(', '),
     },
     relevance: 1.0,
   }));
@@ -85,6 +88,7 @@ export function normalizeOutlookCalendarResults(events: OutlookEvent[]): SearchH
       date: event.start.dateTime,
       attendees: [], // Outlook event structure for attendees is complex, skipping for now or need to fetch
       eventId: event.id,
+      webLink: event.webLink,
     },
     relevance: 0.8,
   }));
@@ -95,7 +99,7 @@ export function normalizeOutlookCalendarResults(events: OutlookEvent[]): SearchH
  */
 export function mergeResults(...resultSets: SearchHit[][]): SearchHit[] {
   const allResults = resultSets.flat();
-  
+
   // Sort by relevance (descending)
   return allResults.sort((a, b) => b.relevance - a.relevance);
 }

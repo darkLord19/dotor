@@ -40,6 +40,7 @@ export interface CitationWithLink {
   from?: string | undefined;
   subject?: string | undefined;
   date?: string | undefined;
+  recipients?: string | undefined;
 }
 
 export interface AnswerWithLinks {
@@ -77,7 +78,7 @@ export async function synthesizeAnswer(
     // Actually, if it's a follow up, maybe the search returned nothing because the query was "and him?" which is hard to search.
     // The `analyzeQuery` should have handled converting "and him?" to a real query.
     // So if we are here with 0 results, it means the search failed.
-    
+
     return {
       answer: 'I could not find any relevant information to answer your question.',
       citations: [],
@@ -141,15 +142,15 @@ ${formattedResults}`,
   try {
     const parsed = JSON.parse(content);
     const rawAnswer = AnswerSchema.parse(parsed);
-    
+
     // Enrich citations with link information
     const enrichedCitations: CitationWithLink[] = rawAnswer.citations.map(citation => {
       // Try to find the corresponding result by ID or by index
       let sourceHit: SearchHit | undefined;
-      
+
       // First try to match by ID directly
       sourceHit = results.find(r => r.id === citation.id);
-      
+
       // If not found, try to extract index from citation ID like "[1]" or "1"
       if (!sourceHit) {
         const indexMatch = citation.id.match(/\d+/);
@@ -158,25 +159,28 @@ ${formattedResults}`,
           sourceHit = resultMap.get(index);
         }
       }
-      
+
       // Build the enriched citation
       const enrichedCitation: CitationWithLink = {
         ...citation,
       };
-      
+
       if (sourceHit) {
         // Add metadata for display
         enrichedCitation.from = sourceHit.metadata.sender;
         enrichedCitation.subject = sourceHit.metadata.subject;
         enrichedCitation.date = sourceHit.metadata.date;
-        
+        enrichedCitation.recipients = sourceHit.metadata.recipients;
+
         // Use the snippet as content if available
         if (sourceHit.content) {
           enrichedCitation.content = sourceHit.content;
         }
-        
+
         // Add link based on source type
-        if (sourceHit.source === 'gmail' && sourceHit.metadata.messageId) {
+        if (sourceHit.metadata.webLink) {
+          enrichedCitation.link = sourceHit.metadata.webLink;
+        } else if (sourceHit.source === 'gmail' && sourceHit.metadata.messageId) {
           enrichedCitation.messageId = sourceHit.metadata.messageId;
           enrichedCitation.threadId = sourceHit.metadata.threadId;
           // Gmail URL format: https://mail.google.com/mail/u/0/#inbox/MESSAGE_ID
@@ -186,16 +190,16 @@ ${formattedResults}`,
           // Google Calendar URL
           enrichedCitation.link = `https://calendar.google.com/calendar/u/0/r/eventedit/${sourceHit.metadata.eventId}`;
         }
-        
+
         // Update the ID to be the actual message/event ID
         if (sourceHit.id) {
           enrichedCitation.id = sourceHit.id;
         }
       }
-      
+
       return enrichedCitation;
     });
-    
+
     return {
       answer: rawAnswer.answer,
       citations: enrichedCitations,

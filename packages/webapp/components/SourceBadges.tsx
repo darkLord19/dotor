@@ -14,6 +14,7 @@ interface Citation {
   from?: string;
   subject?: string;
   date?: string;
+  recipients?: string;
 }
 
 interface SourceBadgesProps {
@@ -53,16 +54,17 @@ export function SourceBadges({ citations }: SourceBadgesProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
 
   // Filter citations that have links or can be linked
-  const validCitations = citations.filter(c => c.link || (c.source === 'gmail' && c.id));
-  
+  // For Outlook, we expect a link to be present from the backend logic
+  const validCitations = citations.filter(c => c.link || (c.source === 'gmail' && c.id) || (c.source === 'outlook' && c.link));
+
   if (validCitations.length === 0 && citations.length === 0) {
     return null;
   }
 
   return (
     <div className={styles.container}>
-      <button 
-        className={styles.headerButton} 
+      <button
+        className={styles.headerButton}
         onClick={() => setIsCollapsed(!isCollapsed)}
         type="button"
       >
@@ -71,77 +73,85 @@ export function SourceBadges({ citations }: SourceBadgesProps) {
           ▼
         </span>
       </button>
-      
+
       {!isCollapsed && (
         <div className={styles.sourcesList}>
           {validCitations.length > 0 ? (
             validCitations.map((citation, index) => {
               const link = citation.link || (citation.source === 'gmail' && citation.id ? `https://mail.google.com/mail/u/0/#inbox/${citation.id}` : '#');
-              
+
+              const isEmail = citation.source === 'gmail' || citation.source === 'outlook';
+
               return (
-              <a
-                key={citation.id || index}
-                href={link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.sourceCard}
-                onClick={(e) => {
-                  if (link === '#') e.preventDefault();
-                }}
-              >
-              <div className={styles.sourceCardHeader}>
-                <span className={styles.sourceIcon}>{sourceIcons[citation.source] ?? '📄'}</span>
-                <span className={styles.sourceNumber}>[{index + 1}]</span>
-              </div>
-              
-              {citation.source === 'gmail' && (
-                <div className={styles.emailPreview}>
-                  {citation.from ? (
-                    <div className={styles.emailField}>
-                      <span className={styles.emailLabel}>From:</span>
-                      <span className={styles.emailValue}>{extractSenderName(citation.from)}</span>
-                    </div>
-                  ) : (
-                    <div className={styles.emailField}>
-                      <span className={styles.emailLabel}>Content:</span>
-                      <span className={styles.emailValue}>{truncate(citation.content, 60)}</span>
+                <a
+                  key={citation.id || index}
+                  href={link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.sourceCard}
+                  onClick={(e) => {
+                    if (link === '#') e.preventDefault();
+                  }}
+                >
+                  <div className={styles.sourceCardHeader}>
+                    <span className={styles.sourceIcon}>{sourceIcons[citation.source] ?? '📄'}</span>
+                    <span className={styles.sourceNumber}>[{index + 1}]</span>
+                  </div>
+
+                  {isEmail && (
+                    <div className={styles.emailPreview}>
+                      {citation.from ? (
+                        <div className={styles.emailField}>
+                          <span className={styles.emailLabel}>From:</span>
+                          <span className={styles.emailValue}>{extractSenderName(citation.from)}</span>
+                        </div>
+                      ) : (
+                        <div className={styles.emailField}>
+                          <span className={styles.emailLabel}>Content:</span>
+                          <span className={styles.emailValue}>{truncate(citation.content, 60)}</span>
+                        </div>
+                      )}
+                      {citation.recipients && (
+                        <div className={styles.emailField}>
+                          <span className={styles.emailLabel}>To:</span>
+                          <span className={styles.emailValue}>{extractSenderName(citation.recipients)}</span>
+                        </div>
+                      )}
+                      {citation.subject && (
+                        <div className={styles.emailField}>
+                          <span className={styles.emailLabel}>Subject:</span>
+                          <span className={styles.emailValue}>{truncate(citation.subject, 50)}</span>
+                        </div>
+                      )}
+                      {citation.content && citation.from && (
+                        <div className={styles.emailBody}>
+                          {truncate(citation.content, 120)}
+                        </div>
+                      )}
                     </div>
                   )}
-                  {citation.subject && (
-                    <div className={styles.emailField}>
-                      <span className={styles.emailLabel}>Subject:</span>
-                      <span className={styles.emailValue}>{truncate(citation.subject, 50)}</span>
+
+                  {citation.source === 'calendar' && (
+                    <div className={styles.calendarPreview}>
+                      <div className={styles.calendarTitle}>{truncate(citation.content, 60)}</div>
+                      {citation.date && (
+                        <div className={styles.calendarDate}>{citation.date}</div>
+                      )}
                     </div>
                   )}
-                  {citation.content && citation.from && (
-                    <div className={styles.emailBody}>
+
+                  {(citation.source === 'linkedin' || citation.source === 'whatsapp') && (
+                    <div className={styles.messagePreview}>
                       {truncate(citation.content, 120)}
                     </div>
                   )}
-                </div>
-              )}
-              
-              {citation.source === 'calendar' && (
-                <div className={styles.calendarPreview}>
-                  <div className={styles.calendarTitle}>{truncate(citation.content, 60)}</div>
-                  {citation.date && (
-                    <div className={styles.calendarDate}>{citation.date}</div>
-                  )}
-                </div>
-              )}
-              
-              {(citation.source === 'linkedin' || citation.source === 'whatsapp') && (
-                <div className={styles.messagePreview}>
-                  {truncate(citation.content, 120)}
-                </div>
-              )}
-              
-              <div className={styles.openLink}>
-                Open {citation.source === 'gmail' ? 'in Gmail' : citation.source === 'calendar' ? 'in Calendar' : ''} →
-              </div>
-            </a>
-            );
-          })
+
+                  <div className={styles.openLink}>
+                    Open {isEmail ? (citation.source === 'outlook' ? 'in Outlook' : 'in Gmail') : citation.source === 'calendar' ? 'in Calendar' : ''} →
+                  </div>
+                </a>
+              );
+            })
           ) : (
             <div className={styles.noLinks}>
               No direct links available for these sources.

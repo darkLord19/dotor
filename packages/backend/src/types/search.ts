@@ -14,6 +14,8 @@ export interface SearchHit {
     messageId?: string | undefined; // Gmail message ID for linking
     threadId?: string | undefined;  // Gmail thread ID
     eventId?: string | undefined;   // Calendar event ID
+    webLink?: string | undefined;   // Direct link to source (e.g. Outlook web link)
+    recipients?: string | undefined; // To: recipients
   };
   relevance: number;
 }
