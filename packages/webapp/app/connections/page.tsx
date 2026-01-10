@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getBackendUrl } from '@/lib/config';
-import { Plus, X, ChevronRight, Loader2 } from 'lucide-react';
+import { Plus, X, ChevronRight } from 'lucide-react';
 import styles from './page.module.css';
 
 interface Connection {
@@ -32,12 +32,10 @@ interface AvailableChat {
   unreadCount: number;
 }
 
-type SettingsSection = 'profile' | 'connected-accounts';
-
 function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [user, setUser] = useState<any>(null);
+  const [_user, setUser] = useState<any>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
 

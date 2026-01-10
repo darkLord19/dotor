@@ -4,7 +4,6 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Home,
   User,
   LogOut,
   Link as LinkIcon

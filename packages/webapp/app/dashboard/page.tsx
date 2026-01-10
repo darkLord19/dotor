@@ -8,7 +8,6 @@ import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import styles from './page.module.css';
 import { AnswerCard } from '@/components/AnswerCard';
 import { ConfidenceBar } from '@/components/ConfidenceBar';
-import { ExtensionStatus } from '@/components/ExtensionStatus';
 import { ConnectGoogle } from '@/components/ConnectGoogle';
 // DataSources component removed
 
@@ -56,8 +55,8 @@ function AskPageContent() {
   const [extensionConnected, setExtensionConnected] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<GoogleStatus | null>(null);
   const [checkingGoogle, setCheckingGoogle] = useState(true);
-  const [initError, setInitError] = useState<string | null>(null);
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlags>({
+  const [_initError, setInitError] = useState<string | null>(null);
+  const [_featureFlags, setFeatureFlags] = useState<FeatureFlags>({
     enableLinkedIn: false,
     enableWhatsApp: false,
     enableAsyncMode: false,
@@ -787,15 +786,6 @@ function AskPageContent() {
     poll();
   };
 
-  const handleSignOut = async () => {
-    try {
-      await fetch('/api/signout', { method: 'POST' });
-    } catch (error) {
-      console.error('Sign out error:', error);
-    }
-    router.push('/login');
-  };
-
   // Show loading state while checking Google connection
 
   // Show Google connection prompt only if we've checked and confirmed it's not connected
@@ -813,6 +803,18 @@ function AskPageContent() {
   return (
     <div className={styles.content}>
       <div className={styles.container}>
+        {conversationId && messages.length > 0 && (
+          <button
+            onClick={handleNewChat}
+            className={styles.newChatButton}
+            title="Start new conversation"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            New Chat
+          </button>
+        )}
         {messages.length === 0 && !loading && (
           <div className={styles.hints}>
             <h3>Try asking:</h3>

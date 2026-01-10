@@ -245,6 +245,7 @@ export async function googleRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.redirect(`${redirectUrl}/connections?google_connected=true`);
     } catch (error) {
       fastify.log.error(error, "Google OAuth callback error");
+      const redirectUrl = process.env.WEBAPP_URL || "http://localhost:3000";
       return reply.redirect(`${redirectUrl}/connections?google_error=true`);
     }
   });
