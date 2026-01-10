@@ -6,7 +6,7 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 export async function POST(request: NextRequest) {
   let redirectResponse: NextResponse | null = null;
-  
+
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
       getAll() {
@@ -16,10 +16,10 @@ export async function POST(request: NextRequest) {
         cookiesToSetArray.forEach(({ name, value }) => {
           request.cookies.set(name, value);
         });
-        
-        const redirectUrl = new URL('/ask', request.url);
+
+        const redirectUrl = new URL('/dashboard', request.url);
         redirectResponse = NextResponse.redirect(redirectUrl, { status: 303 });
-        
+
         cookiesToSetArray.forEach(({ name, value, options }) => {
           const cookieOptions: CookieOptions = {
             ...options,
@@ -28,20 +28,20 @@ export async function POST(request: NextRequest) {
             sameSite: options?.sameSite ?? 'lax',
             path: options?.path ?? '/',
           };
-          
+
           if (options?.maxAge !== undefined) {
             cookieOptions.maxAge = options.maxAge;
           }
           if (options?.expires !== undefined) {
             cookieOptions.expires = options.expires;
           }
-          
+
           redirectResponse!.cookies.set(name, value, cookieOptions);
         });
       },
     },
   });
-  
+
   const formData = await request.formData();
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
@@ -81,12 +81,12 @@ export async function POST(request: NextRequest) {
     return redirectResponse;
   }
 
-  redirectResponse = NextResponse.redirect(new URL('/ask', request.url), { status: 303 });
-  
+  redirectResponse = NextResponse.redirect(new URL('/dashboard', request.url), { status: 303 });
+
   const urlParts = SUPABASE_URL.replace('https://', '').replace('http://', '').split('.');
   const projectRef = urlParts[0];
   const authCookieName = `sb-${projectRef}-auth-token`;
-  
+
   const cookieValue = JSON.stringify({
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,
@@ -95,11 +95,11 @@ export async function POST(request: NextRequest) {
     token_type: data.session.token_type,
     user: data.session.user,
   });
-  
-  const expiresAt = data.session.expires_at 
+
+  const expiresAt = data.session.expires_at
     ? new Date(data.session.expires_at * 1000)
     : new Date(Date.now() + (data.session.expires_in || 3600) * 1000);
-  
+
   redirectResponse.cookies.set(authCookieName, cookieValue, {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     expires: expiresAt,
     maxAge: data.session.expires_in || 3600,
   });
-  
+
   return redirectResponse;
 }
 

@@ -30,7 +30,7 @@ export function GlobalSidebar() {
 
   // Helper to determine active state
   const isActive = (path: string) => {
-    if (path === '/ask') return pathname === '/ask';
+    if (path === '/dashboard') return pathname === '/dashboard';
     if (path === '/connections') return pathname?.startsWith('/connections');
     if (path === '/profile') return pathname?.startsWith('/profile');
 
@@ -48,8 +48,8 @@ export function GlobalSidebar() {
 
   return (
     <header className={styles.sidebar}>
-      <Link href="/ask" className={styles.logo} title="Home">
-        <span style={{ fontWeight: 900 }}>G</span>
+      <Link href="/dashboard" className={styles.logo} title="Home">
+        <span style={{ fontWeight: 900 }}>Blaiso</span>
       </Link>
 
       <nav className={styles.nav}>

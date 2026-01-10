@@ -30,13 +30,13 @@ export async function login(formData: FormData): Promise<AuthResult | never> {
   // Call getSession() after signInWithPassword to ensure setAll is triggered
   // This reads the session and should trigger cookie writing
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  
+
   if (sessionError || !session) {
     return { error: sessionError?.message || 'Failed to get session' };
   }
 
   revalidatePath('/', 'layout');
-  redirect('/ask');
+  redirect('/dashboard');
 }
 
 export async function signup(formData: FormData): Promise<AuthResult> {

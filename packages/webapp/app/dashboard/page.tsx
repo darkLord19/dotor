@@ -461,7 +461,7 @@ function AskPageContent() {
       };
       refreshStatus();
       // Clean up URL
-      router.replace('/ask');
+      router.replace('/dashboard');
     }
 
     if (searchParams.get('google_error') === 'true' || searchParams.get('microsoft_error') === 'true') {
