@@ -104,9 +104,17 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
         });
 
         const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+        const now = new Date().toISOString();
+
+        fastify.log.info({ 
+          userId, 
+          email: profile.email,
+          expiresAt: expiresAt.toISOString(),
+          hasRefreshToken: !!tokens.refresh_token 
+        }, "Attempting to store microsoft connection");
 
         // Store in database using admin client (to bypass RLS for now/ensure robust write)
-        const { error: upsertError } = await supabaseAdmin
+        const { data: upsertData, error: upsertError } = await supabaseAdmin
           .from("connections")
           .upsert({
             user_id: userId,
@@ -116,15 +124,19 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
             refresh_token: encrypted.refresh_token,
             token_expires_at: expiresAt.toISOString(),
             scopes: tokens.scope.split(' '),
-            updated_at: new Date().toISOString(),
+            updated_at: now,
           }, {
-              onConflict: 'user_id,type'
-          });
+              onConflict: 'user_id,type',
+              ignoreDuplicates: false
+          })
+          .select();
 
         if (upsertError) {
           fastify.log.error(upsertError, "Failed to store microsoft connection");
           throw new Error("Failed to store connection");
         }
+
+        fastify.log.info({ userId, email: profile.email, upsertData }, "Microsoft connection stored successfully");
 
         // Redirect back to the app (using the redirect from state if provided, or default)
         const appUrl = process.env.APP_URL || process.env.WEBAPP_URL || "http://localhost:3000";
@@ -140,7 +152,7 @@ export async function microsoftRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // Disconnect Microsoft account
-  fastify.post(
+  fastify.delete(
     "/microsoft/disconnect",
     {
       preHandler: verifyJWT,
