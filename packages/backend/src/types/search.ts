@@ -4,7 +4,7 @@ import type { GmailQueryPlan, QueryAnalysis } from '../lib/openai.js';
 // Unified search result format
 export interface SearchHit {
   id: string;
-  source: 'gmail' | 'calendar' | 'linkedin' | 'whatsapp';
+  source: 'gmail' | 'calendar' | 'linkedin' | 'whatsapp' | 'outlook';
   content: string;
   metadata: {
     date?: string | undefined;

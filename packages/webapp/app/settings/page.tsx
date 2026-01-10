@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getBackendUrl } from '@/lib/config';
 import styles from './page.module.css';
@@ -35,6 +35,7 @@ type SettingsSection = 'profile' | 'connected-accounts';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
   const [user, setUser] = useState<any>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -62,6 +63,31 @@ export default function SettingsPage() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  // Handle OAuth callback params
+  useEffect(() => {
+    const isGoogleConnected = searchParams.get('google_connected') === 'true';
+    const isMicrosoftConnected = searchParams.get('microsoft_connected') === 'true';
+    
+    if (isGoogleConnected || isMicrosoftConnected) {
+      setActiveSection('connected-accounts');
+      setProfileMessage({ 
+        type: 'success', 
+        text: `${isGoogleConnected ? 'Google' : 'Microsoft'} account connected successfully!` 
+      });
+      setTimeout(() => setProfileMessage(null), 5000);
+      router.replace('/settings');
+    }
+    
+    if (searchParams.get('google_error') === 'true' || searchParams.get('microsoft_error') === 'true') {
+      setActiveSection('connected-accounts');
+      setProfileMessage({ 
+        type: 'error', 
+        text: `Failed to connect ${searchParams.get('google_error') === 'true' ? 'Google' : 'Microsoft'} account.` 
+      });
+      router.replace('/settings');
+    }
+  }, [searchParams, router]);
 
   // Avoid unused variable warning if accessToken is only set but not read in this scope yet
   // Once we implement chat fetching that uses the token, this will be resolved naturally.
@@ -684,6 +710,7 @@ export default function SettingsPage() {
   };
 
   const isGoogleConnected = connections.some(conn => conn.type === 'google');
+  const isMicrosoftConnected = connections.some(conn => conn.type === 'microsoft');
 
   if (loading) {
     return (
@@ -1147,6 +1174,61 @@ export default function SettingsPage() {
                     </ul>
                   </div>
                 )}
+              </div>
+
+              {/* Microsoft Account */}
+              <div className={styles.accountProvider}>
+                <div className={styles.providerHeader}>
+                  <div className={styles.providerInfo}>
+                    <svg className={styles.googleIcon} viewBox="0 0 23 23" width="24" height="24">
+                      <path fill="#f35325" d="M1 1h10v10H1z"/>
+                      <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                      <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                      <path fill="#ffba08" d="M12 12h10v10H12z"/>
+                    </svg>
+                    <span className={styles.providerName}>Outlook</span>
+                  </div>
+                  {isMicrosoftConnected ? (
+                    <button
+                      onClick={() => handleDisconnect('microsoft')}
+                      className={styles.disconnectButton}
+                    >
+                      Disconnect
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleConnect('microsoft')}
+                      className={styles.connectButton}
+                    >
+                      Connect
+                    </button>
+                  )}
+                </div>
+                {isMicrosoftConnected && (() => {
+                  const msConn = connections.find(conn => conn.type === 'microsoft');
+                  if (!msConn) return null;
+                  
+                  return (
+                    <div className={styles.connectionDetails}>
+                      {msConn.email && (
+                        <div className={styles.connectionEmail}>{msConn.email}</div>
+                      )}
+                      <div className={styles.connectionMeta}>
+                        <span>Connected {new Date(msConn.connectedAt).toLocaleDateString()}</span>
+                        {msConn.needsRefresh && (
+                          <span className={styles.needsRefresh}>• Needs refresh</span>
+                        )}
+                      </div>
+                      <div className={styles.scopes}>
+                        <span className={styles.scopesLabel}>Permissions:</span>
+                        <ul className={styles.scopesList}>
+                          <li className={styles.scopeItem}>📧 Mail (read-only)</li>
+                          <li className={styles.scopeItem}>📅 Calendar (read-only)</li>
+                        </ul>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </section>
           )}

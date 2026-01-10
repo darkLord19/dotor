@@ -5,9 +5,11 @@ import { createUserClient, supabaseAdmin } from '../lib/supabase.js';
 import { planQuery, type Message } from '../lib/openai.js';
 import { searchGmail } from '../lib/gmail.js';
 import { getCalendarEvents, refreshAccessToken } from '../lib/calendar.js';
-import { normalizeGmailResults, normalizeCalendarResults, mergeResults } from '../lib/normalizer.js';
+import { normalizeGmailResults, normalizeCalendarResults, normalizeOutlookMailResults, normalizeOutlookCalendarResults, mergeResults } from '../lib/normalizer.js';
+import { searchOutlook, getOutlookEvents } from '../lib/microsoft-graph.js';
+import { refreshAccessToken as refreshMicrosoftToken } from '../lib/microsoft.js';
 import { synthesizeAnswer } from '../lib/synthesizer.js';
-import { decryptTokens, encrypt } from '../lib/encryption.js';
+import { decryptTokens, encrypt, encryptTokens } from '../lib/encryption.js';
 import { getFeatureFlags, isExtensionEnabled, type FeatureFlags } from '../lib/feature-flags.js';
 import { searchWhatsApp } from '../lib/whatsapp.js';
 import type { SearchHit, PendingSearch } from '../types/search.js';
@@ -112,97 +114,125 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
       fastify.log.error(insertError, 'Failed to insert usage event');
     }
 
-    // Get user's Google connection
-    const { data: googleConnection, error: connectionError } = await supabase
+    // Get all user connections
+    const { data: connections, error: connectionsError } = await supabase
       .from('connections')
       .select('*')
-      .eq('user_id', authRequest.userId)
-      .eq('type', 'google')
-      .single();
+      .eq('user_id', authRequest.userId);
 
-    if (connectionError || !googleConnection) {
-      return reply.code(400).send({
-        error: 'Google account not connected',
-        code: 'GOOGLE_NOT_CONNECTED',
-      });
+    if (connectionsError) {
+       fastify.log.error(connectionsError, 'Failed to fetch connections');
+       // Don't fail yet, maybe no connections but that's fine?
+       // But if we fail to fetch, it's an error.
     }
 
-    // Decrypt the stored tokens
-    let decryptedTokens: { access_token: string; refresh_token: string };
-    try {
-      decryptedTokens = decryptTokens({
-        access_token: googleConnection.access_token,
-        refresh_token: googleConnection.refresh_token,
-      });
-    } catch (error) {
-      fastify.log.error(error, 'Failed to decrypt tokens');
-      return reply.code(500).send({
-        error: 'Failed to decrypt stored tokens. Please reconnect your account.',
-        code: 'DECRYPTION_FAILED',
-      });
-    }
+    const googleConnection = connections?.find(c => c.type === 'google');
+    const microsoftConnection = connections?.find(c => c.type === 'microsoft');
+    
+    // We only block if BOTH are missing AND we plan to search them? 
+    // Actually, let's proceed and check later when planning.
 
-    // Helper function to refresh and update Google token
-    async function refreshAndUpdateToken(): Promise<string> {
+    // Helper: Decrypt tokens safely
+    const getDecryptedTokens = (conn: any) => {
+        try {
+            return decryptTokens({
+                access_token: conn.access_token,
+                refresh_token: conn.refresh_token,
+            });
+        } catch (e) {
+            fastify.log.error(e, `Failed to decrypt ${conn.type} tokens`);
+            return null;
+        }
+    };
+
+    const googleTokens = googleConnection ? getDecryptedTokens(googleConnection) : null;
+    const microsoftTokens = microsoftConnection ? getDecryptedTokens(microsoftConnection) : null;
+
+    // Helper functions to refresh and update tokens
+    async function refreshGoogleFn(): Promise<string | null> {
+      if (!googleConnection || !googleTokens) return null;
       fastify.log.info('Refreshing Google access token');
       try {
-        const newTokens = await refreshAccessToken(decryptedTokens.refresh_token);
+        const newTokens = await refreshAccessToken(googleTokens.refresh_token);
+        if (!newTokens.access_token) throw new Error('No access token returned');
         
-        if (!newTokens.access_token) {
-          throw new Error('No access token returned from refresh');
-        }
-        
-        // Encrypt and update stored token (using admin client)
         if (supabaseAdmin) {
-          const encryptedAccessToken = encrypt(newTokens.access_token);
-          await supabaseAdmin
-            .from('connections')
-            .update({
-              access_token: encryptedAccessToken,
+          const encrypted = encrypt(newTokens.access_token);
+          await supabaseAdmin.from('connections').update({
+              access_token: encrypted,
               token_expires_at: new Date(newTokens.expiry_date || Date.now() + 3600000).toISOString(),
-            })
-            .eq('user_id', authRequest.userId)
-            .eq('type', 'google');
+            }).eq('id', googleConnection.id);
         }
-        
         return newTokens.access_token;
       } catch (error) {
         fastify.log.error(error, 'Failed to refresh Google token');
-        throw error;
+        return null;
       }
     }
 
-    // Check if token needs refresh
-    let accessToken = decryptedTokens.access_token;
-    const tokenExpiry = googleConnection.token_expires_at 
-      ? new Date(googleConnection.token_expires_at) 
-      : null;
-    
-    // Refresh if expired or if expiry is unknown (null)
-    if (!tokenExpiry || tokenExpiry < new Date()) {
+    async function refreshMicrosoftFn(): Promise<string | null> {
+      if (!microsoftConnection || !microsoftTokens) return null;
+      fastify.log.info('Refreshing Microsoft access token');
       try {
-        accessToken = await refreshAndUpdateToken();
+        const newTokens = await refreshMicrosoftToken(microsoftTokens.refresh_token || '');
+        if (!newTokens.access_token) throw new Error('No access token returned');
+
+         if (supabaseAdmin) {
+          const encrypted = encryptTokens({
+             access_token: newTokens.access_token,
+             refresh_token: newTokens.refresh_token || microsoftTokens.refresh_token,
+          });
+          
+          await supabaseAdmin.from('connections').update({
+              access_token: encrypted.access_token,
+              refresh_token: encrypted.refresh_token,
+              token_expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
+            }).eq('id', microsoftConnection.id);
+        }
+        return newTokens.access_token;
       } catch (error) {
-        return reply.code(400).send({
-          error: 'Failed to refresh Google token. Please reconnect your account.',
-          code: 'TOKEN_REFRESH_FAILED',
-        });
+        fastify.log.error(error, 'Failed to refresh Microsoft token');
+        return null;
       }
+    }
+
+    // Check expiry and refresh if needed
+    let activeGoogleToken = googleTokens?.access_token;
+    if (googleConnection) {
+        const expires = googleConnection.token_expires_at ? new Date(googleConnection.token_expires_at) : null;
+        if (!expires || expires < new Date()) {
+            const refreshed = await refreshGoogleFn();
+            if (refreshed) activeGoogleToken = refreshed;
+            // If refresh fails, we continue but might fail later or skip Google
+        }
+    }
+
+    let activeMicrosoftToken = microsoftTokens?.access_token;
+    if (microsoftConnection) {
+         const expires = microsoftConnection.token_expires_at ? new Date(microsoftConnection.token_expires_at) : null;
+        if (!expires || expires < new Date()) {
+            const refreshed = await refreshMicrosoftFn();
+            if (refreshed) activeMicrosoftToken = refreshed;
+        }
     }
 
     try {
       // Step 0: Get feature flags for user
       const dbFlags = await getFeatureFlags(authRequest.userId);
       
-      // Merge flags from request
+      // Implicitly determine available sources based on connections
+      const hasEmailConnection = !!(googleConnection || microsoftConnection);
+      const hasWhatsAppConnection = connections?.some(c => c.type === 'whatsapp') || false;
+
+      // Merge flags (priority: request -> implicit connection -> db flags default)
       const featureFlags: FeatureFlags = {
         ...dbFlags,
         enableLinkedIn: requestFlags?.enableLinkedIn ?? dbFlags.enableLinkedIn,
-        enableWhatsApp: requestFlags?.enableWhatsApp ?? dbFlags.enableWhatsApp,
-        enableGmail: requestFlags?.enableGmail ?? dbFlags.enableGmail,
+        enableWhatsApp: requestFlags?.enableWhatsApp ?? (hasWhatsAppConnection || dbFlags.enableWhatsApp),
+        enableGmail: requestFlags?.enableGmail ?? (hasEmailConnection || dbFlags.enableGmail),
       };
       
-      fastify.log.info({ featureFlags }, 'Feature flags loaded');
+      fastify.log.info({ featureFlags, hasEmailConnection, hasWhatsAppConnection }, 'Feature flags loaded');
 
       // Step 1: Analyze query and plan in one shot
       fastify.log.info({ query }, 'Planning query');
@@ -217,51 +247,90 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
       const sourcesNeeded: string[] = [];
       // const domInstructions: DOMInstruction[] = [];
 
-      // Step 2: Fetch Gmail data if needed
+      // Step 2: Fetch Email data if needed
       if (analysis.needsGmail && gmailPlan) {
-        sourcesNeeded.push('gmail');
-        try {
-          fastify.log.info({ gmailPlan }, 'Gmail query ready');
+        sourcesNeeded.push('gmail'); // Keep 'gmail' for now or 'email'
+        
+        const maxResults = gmailPlan.intent === 'summary' || gmailPlan.intent === 'count' ? 20 : 10;
+        
+        // Helper for unauthorized check
+        const isUnauthorized = (error: any) => 
+            error?.code === 401 || 
+            error?.status === 401 || 
+            error?.response?.status === 401 ||
+            error?.response?.data?.error?.code === 401;
 
-          // Execute Gmail search with retry on 401
-          let gmailResults;
-          const maxResults = gmailPlan.intent === 'summary' || gmailPlan.intent === 'count' ? 20 : 10;
-          
-          try {
-            gmailResults = await searchGmail(
-              accessToken,
-              gmailPlan.gmailQuery,
-              maxResults
-            );
-          } catch (error: any) {
-            // If we get a 401, try refreshing the token and retry
-            const isUnauthorized = error?.code === 401 || 
-                                  error?.status === 401 || 
-                                  error?.response?.status === 401 ||
-                                  error?.response?.data?.error?.code === 401;
+        // 2a. Search Gmail
+        if (activeGoogleToken) {
+            try {
+            fastify.log.info({ gmailPlan }, 'Gmail query ready');
             
-            if (isUnauthorized) {
-              fastify.log.info('Gmail API returned 401, refreshing token and retrying');
-              try {
-                accessToken = await refreshAndUpdateToken();
+            let gmailResults;
+            try {
                 gmailResults = await searchGmail(
-                  accessToken,
-                  gmailPlan.gmailQuery,
-                  maxResults
+                activeGoogleToken,
+                gmailPlan.gmailQuery,
+                maxResults
                 );
-              } catch (refreshError) {
-                fastify.log.error(refreshError, 'Failed to refresh token after 401');
-                throw refreshError;
-              }
-            } else {
-              throw error;
+            } catch (error: any) {
+                if (isUnauthorized(error)) {
+                fastify.log.info('Gmail API returned 401, refreshing token and retrying');
+                try {
+                    const refreshed = await refreshGoogleFn();
+                    if (refreshed) {
+                        activeGoogleToken = refreshed;
+                        gmailResults = await searchGmail(
+                        activeGoogleToken,
+                        gmailPlan.gmailQuery,
+                        maxResults
+                        );
+                    }
+                } catch (refreshError) {
+                    fastify.log.error(refreshError, 'Failed to refresh token after 401');
+                }
+                } else {
+                throw error;
+                }
             }
-          }
-          
-          fastify.log.info({ count: gmailResults.messages.length }, 'Gmail search complete');
-          results.push(...normalizeGmailResults(gmailResults.messages));
-        } catch (error) {
-          fastify.log.error(error, 'Gmail search failed');
+            
+            if (gmailResults) {
+                fastify.log.info({ count: gmailResults.messages.length }, 'Gmail search complete');
+                results.push(...normalizeGmailResults(gmailResults.messages));
+            }
+            } catch (error) {
+            fastify.log.error(error, 'Gmail search failed');
+            }
+        }
+
+        // 2b. Search Outlook
+        if (activeMicrosoftToken) {
+            try {
+                fastify.log.info('Outlook query start');
+                let outlookResults;
+                
+                try {
+                    // Try to use the same query. Microsoft Search is somewhat compatible with basic keyword/from: queries.
+                    outlookResults = await searchOutlook(activeMicrosoftToken, gmailPlan.gmailQuery, maxResults);
+                } catch (error: any) {
+                     if (isUnauthorized(error) || error.message.includes('401')) {
+                         fastify.log.info('Outlook API returned 401, refreshing token');
+                         const refreshed = await refreshMicrosoftFn();
+                         if (refreshed) {
+                             activeMicrosoftToken = refreshed;
+                             outlookResults = await searchOutlook(activeMicrosoftToken, gmailPlan.gmailQuery, maxResults);
+                         }
+                     } else {
+                         throw error;
+                     }
+                }
+
+                if (outlookResults) {
+                    fastify.log.info({ count: outlookResults.length }, 'Outlook search complete');
+                    results.push(...normalizeOutlookMailResults(outlookResults));
+                }
+            } catch (error) {
+                fastify.log.error(error, 'Outlook search failed');
+            }
         }
       }
 
@@ -276,40 +345,90 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
             ? new Date(analysis.calendarDateRange.end) 
             : undefined;
 
-          let calendarResults;
-          try {
-            calendarResults = await getCalendarEvents(
-              accessToken,
-              startDate,
-              endDate
-            );
-          } catch (error: any) {
-            // If we get a 401, try refreshing the token and retry
-            const isUnauthorized = error?.code === 401 || 
-                                  error?.status === 401 || 
-                                  error?.response?.status === 401 ||
-                                  error?.response?.data?.error?.code === 401;
-            
-            if (isUnauthorized) {
-              fastify.log.info('Calendar API returned 401, refreshing token and retrying');
+          // Helper for unauthorized check (redefined to be safe or reused if lifted scope)
+           const isUnauthorized = (error: any) => 
+            error?.code === 401 || 
+            error?.status === 401 || 
+            error?.response?.status === 401 ||
+            error?.response?.data?.error?.code === 401;
+
+          // 3a. Google Calendar
+          if (activeGoogleToken) {
               try {
-                accessToken = await refreshAndUpdateToken();
-                calendarResults = await getCalendarEvents(
-                  accessToken,
-                  startDate,
-                  endDate
-                );
-              } catch (refreshError) {
-                fastify.log.error(refreshError, 'Failed to refresh token after 401');
-                throw refreshError;
+                let calendarResults;
+                try {
+                    calendarResults = await getCalendarEvents(
+                    activeGoogleToken,
+                    startDate,
+                    endDate
+                    );
+                } catch (error: any) {
+                    if (isUnauthorized(error)) {
+                    fastify.log.info('Calendar API returned 401, refreshing token and retrying');
+                    try {
+                         const refreshed = await refreshGoogleFn();
+                         if (refreshed) {
+                             activeGoogleToken = refreshed;
+                             calendarResults = await getCalendarEvents(
+                                activeGoogleToken,
+                                startDate,
+                                endDate
+                            );
+                         }
+                    } catch (refreshError) {
+                        fastify.log.error(refreshError, 'Failed to refresh token after 401');
+                    }
+                    } else {
+                    throw error;
+                    }
+                }
+                
+                if (calendarResults) {
+                    fastify.log.info({ count: calendarResults.events.length }, 'Calendar fetch complete');
+                    results.push(...normalizeCalendarResults(calendarResults.events));
+                }
+              } catch (error) {
+                fastify.log.error(error, 'Calendar fetch failed');
               }
-            } else {
-              throw error;
-            }
           }
-          
-          fastify.log.info({ count: calendarResults.events.length }, 'Calendar fetch complete');
-          results.push(...normalizeCalendarResults(calendarResults.events));
+
+          // 3b. Outlook Calendar
+          if (activeMicrosoftToken) {
+              try {
+                let outlookEvents;
+                
+                try {
+                    // Start defaults to 1 month ago if undefined?
+                    // End defaults to 1 month in future?
+                    // Let's stick to what analysis provided or reasonable defaults
+                    const s = startDate || new Date();
+                    const e = endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+                    outlookEvents = await getOutlookEvents(activeMicrosoftToken, s, e);
+                } catch (error: any) {
+                     if (isUnauthorized(error) || error.message.includes('401')) {
+                         fastify.log.info('Outlook Calendar API returned 401, refreshing token');
+                         const refreshed = await refreshMicrosoftFn();
+                         if (refreshed) {
+                             activeMicrosoftToken = refreshed;
+                            const s = startDate || new Date();
+                            const e = endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                             outlookEvents = await getOutlookEvents(activeMicrosoftToken, s, e);
+                         }
+                     } else {
+                         throw error;
+                     }
+                }
+
+                if (outlookEvents) {
+                    fastify.log.info({ count: outlookEvents.length }, 'Outlook calendar fetch complete');
+                    results.push(...normalizeOutlookCalendarResults(outlookEvents));
+                }
+              } catch (error) {
+                  fastify.log.error(error, 'Outlook calendar fetch failed');
+              }
+          }
+
         } catch (error) {
           fastify.log.error(error, 'Calendar fetch failed');
         }

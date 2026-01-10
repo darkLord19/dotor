@@ -7,6 +7,7 @@ import { googleRoutes } from './routes/google.js';
 import { accountRoutes } from './routes/account.js';
 import { authRoutes } from './routes/auth.js';
 import { whatsappRoutes } from './routes/whatsapp.js';
+import { microsoftRoutes } from './routes/microsoft.js';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -72,6 +73,7 @@ async function buildServer() {
   await fastify.register(accountRoutes);
   await fastify.register(authRoutes);
   await fastify.register(whatsappRoutes);
+  await fastify.register(microsoftRoutes);
 
   return fastify;
 }

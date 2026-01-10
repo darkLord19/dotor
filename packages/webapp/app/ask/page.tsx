@@ -10,7 +10,8 @@ import { AnswerCard } from '@/components/AnswerCard';
 import { ConfidenceBar } from '@/components/ConfidenceBar';
 import { ExtensionStatus } from '@/components/ExtensionStatus';
 import { ConnectGoogle } from '@/components/ConnectGoogle';
-import { DataSources } from '@/components/DataSources';
+// DataSources component removed
+
 
 interface Answer {
   answer: string;
@@ -62,11 +63,7 @@ function AskPageContent() {
     enableWhatsApp: false,
     enableAsyncMode: false,
   });
-  const [selectedFlags, setSelectedFlags] = useState({
-    enableGmail: true,
-    enableLinkedIn: false,
-    enableWhatsApp: false,
-  });
+  // selectedFlags removed - sources are now implicitly decided by backend based on availability
   const hasCheckedRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -296,15 +293,15 @@ function AskPageContent() {
       const backendUrl = getBackendUrl();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
-        console.warn('[ASK PAGE] Google status check timeout - aborting');
+        console.warn('[ASK PAGE] Connection check timeout - aborting');
         controller.abort();
       }, 8000); // 8 second timeout
       
-      console.log('[ASK PAGE] Checking Google connection status...');
+      console.log('[ASK PAGE] Checking connection status...');
       
-      // Fetch Google status and feature flags in parallel
-      const [googleRes, flagsRes] = await Promise.all([
-        fetch(`${backendUrl}/google/status`, {
+      // Fetch connections and feature flags in parallel
+      const [connectionsRes, flagsRes] = await Promise.all([
+        fetch(`${backendUrl}/connections`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
           },
@@ -326,11 +323,7 @@ function AskPageContent() {
           const flagsData = await flagsRes.json();
           if (flagsData && flagsData.flags) {
             setFeatureFlags(flagsData.flags);
-            setSelectedFlags(prev => ({
-              ...prev,
-              enableLinkedIn: flagsData.flags.enableLinkedIn,
-              enableWhatsApp: flagsData.flags.enableWhatsApp,
-            }));
+            // No longer setting selectedFlags
             console.log('[ASK PAGE] Feature flags loaded:', flagsData.flags);
           }
         } catch (e) {
@@ -338,45 +331,36 @@ function AskPageContent() {
         }
       }
       
-      if (googleRes.ok) {
+      if (connectionsRes.ok) {
         try {
-          const status = await googleRes.json();
-          console.log('[ASK PAGE] Google status received:', JSON.stringify(status));
+          const connections = await connectionsRes.json();
+          const hasEmailConnection = Array.isArray(connections) && 
+              connections.some((c: any) => c.type === 'google' || c.type === 'microsoft');
           
-          // Ensure status has at least connected property
-          if (status && typeof status === 'object') {
-            setGoogleStatus(status);
-            console.log('[ASK PAGE] Google status state updated');
-          } else {
-            console.warn('[ASK PAGE] Invalid status format, defaulting to not connected');
-            setGoogleStatus({ connected: false });
-          }
-        } catch (jsonError) {
-          console.error('[ASK PAGE] Failed to parse Google status response:', jsonError);
-          setGoogleStatus({ connected: false });
+          console.log('[ASK PAGE] Connection status:', hasEmailConnection);
+          
+          setGoogleStatus({ 
+              connected: hasEmailConnection,
+              // Add dummy email if microsoft is primary, or first found
+              email: connections.find((c: any) => (c.type === 'google' || c.type === 'microsoft'))?.email 
+          });
+          setCheckingGoogle(false);
+        } catch (e) {
+            console.warn('[ASK PAGE] Failed to parse connections:', e);
+            setCheckingGoogle(false);
         }
       } else {
-        const errorText = await googleRes.text().catch(() => 'Unknown error');
-        console.error('[ASK PAGE] Google status check failed:', googleRes.status, googleRes.statusText, errorText);
+        console.warn('[ASK PAGE] Failed to fetch connections:', connectionsRes.status);
         setGoogleStatus({ connected: false });
+        setCheckingGoogle(false);
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        console.error('[ASK PAGE] Google status check timed out after 8 seconds');
-      } else if (error instanceof Error && error.message.includes('fetch')) {
-        console.error('[ASK PAGE] Network error checking Google status:', error.message);
+        // ignore
       } else {
-        console.error('[ASK PAGE] Failed to check Google status:', error);
+        console.error('[ASK PAGE] Check connection error:', error);
+        setCheckingGoogle(false);
       }
-      setGoogleStatus({ connected: false });
-    } finally {
-      console.log('[ASK PAGE] Setting checkingGoogle to false');
-      setCheckingGoogle((prev) => {
-        if (prev) {
-          console.log('[ASK PAGE] Actually updating checkingGoogle from', prev, 'to false');
-        }
-        return false;
-      });
     }
   }, []);
 
@@ -468,8 +452,11 @@ function AskPageContent() {
 
   // Handle OAuth callback params
   useEffect(() => {
-    if (searchParams.get('google_connected') === 'true') {
-      // Refresh Google status after successful connection
+    const isGoogleConnected = searchParams.get('google_connected') === 'true';
+    const isMicrosoftConnected = searchParams.get('microsoft_connected') === 'true';
+    
+    if (isGoogleConnected || isMicrosoftConnected) {
+      // Refresh status after successful connection
       const refreshStatus = async () => {
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
@@ -481,9 +468,10 @@ function AskPageContent() {
       // Clean up URL
       router.replace('/ask');
     }
-    if (searchParams.get('google_error') === 'true') {
+    
+    if (searchParams.get('google_error') === 'true' || searchParams.get('microsoft_error') === 'true') {
       // Show error message
-      console.error('Google connection failed');
+      console.error('Connection failed');
       router.replace('/ask');
     }
   }, [searchParams, router, checkGoogleConnection]);
@@ -569,7 +557,7 @@ function AskPageContent() {
         body: JSON.stringify({ 
           query: currentQuery,
           conversationId,
-          flags: selectedFlags,
+          // flags removed - sources are decided by backend
         }),
       });
 
@@ -931,12 +919,6 @@ function AskPageContent() {
       </header>
 
       <div className={styles.container}>
-        <DataSources 
-          flags={selectedFlags} 
-          onChange={setSelectedFlags} 
-          extensionConnected={extensionConnected} 
-        />
-
         {messages.length === 0 && !loading && (
           <div className={styles.hints}>
             <h3>Try asking:</h3>

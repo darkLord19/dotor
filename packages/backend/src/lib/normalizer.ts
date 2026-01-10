@@ -1,6 +1,7 @@
 import type { SearchHit } from '../types/search.js';
 import type { GmailMessage } from './gmail.js';
 import type { CalendarEvent } from './calendar.js';
+import type { OutlookEmail, OutlookEvent } from './microsoft-graph.js';
 
 /**
  * Normalize Gmail messages to SearchHit format
@@ -51,6 +52,41 @@ export function normalizeDOMResults(
     content: snippet,
     metadata: {},
     relevance: 0.9,
+  }));
+}
+
+/**
+ * Normalize Outlook messages to SearchHit format
+ */
+export function normalizeOutlookMailResults(messages: OutlookEmail[]): SearchHit[] {
+  return messages.map((msg, index) => ({
+    id: msg.id ?? `outlook-${index}`,
+    source: 'outlook' as const,
+    content: msg.bodyPreview,
+    metadata: {
+      date: msg.receivedDateTime,
+      sender: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address,
+      subject: msg.subject,
+      messageId: msg.id,
+    },
+    relevance: 1.0,
+  }));
+}
+
+/**
+ * Normalize Outlook Calendar events to SearchHit format
+ */
+export function normalizeOutlookCalendarResults(events: OutlookEvent[]): SearchHit[] {
+  return events.map((event, index) => ({
+    id: event.id ?? `outlook-calendar-${index}`,
+    source: 'calendar' as const, // Can reuse 'calendar' source for now as it seems generic enough?
+    content: `${event.subject} - ${event.start.dateTime}`,
+    metadata: {
+      date: event.start.dateTime,
+      attendees: [], // Outlook event structure for attendees is complex, skipping for now or need to fetch
+      eventId: event.id,
+    },
+    relevance: 0.8,
   }));
 }
 

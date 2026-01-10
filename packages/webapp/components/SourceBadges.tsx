@@ -25,6 +25,7 @@ const sourceIcons: Record<string, string> = {
   calendar: '📅',
   linkedin: '💼',
   whatsapp: '💬',
+  outlook: '📧',
 };
 
 /**
