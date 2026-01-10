@@ -86,19 +86,25 @@
 }
 
 .newChatButton {
-  align-self: flex-end;
-  margin-bottom: var(--space-4);
+  /* align-self: flex-end; removed */
+  /* margin-bottom: var(--space-4); removed */
   display: flex;
   align-items: center;
+  justify-content: center;
+  /* Center content */
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2);
+  /* Reduced padding to be icon-only mostly, or compact */
+  width: 44px;
+  /* Fixed width */
+  height: 44px;
+  /* Fixed height to match submit button */
+  min-width: 44px;
   background: var(--surface-secondary);
   color: var(--text-primary);
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
   transition: all var(--transition-fast);
   z-index: 20;
 }
@@ -119,6 +125,12 @@
 }
 
 .form {
+  display: flex;
+  /* Enable flex layout */
+  align-items: center;
+  /* Vertically align input and button */
+  gap: var(--space-3);
+  /* Space between button and input */
   padding-top: var(--space-4);
   padding-bottom: var(--space-8);
   background: var(--bg-primary);

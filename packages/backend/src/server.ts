@@ -1,3 +1,4 @@
+import './instrumentation.js';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { healthRoutes } from './routes/health.js';
@@ -8,25 +9,37 @@ import { accountRoutes } from './routes/account.js';
 import { authRoutes } from './routes/auth.js';
 import { whatsappRoutes } from './routes/whatsapp.js';
 import { microsoftRoutes } from './routes/microsoft.js';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
 async function buildServer() {
   const isDev = process.env.NODE_ENV === 'development';
-  
+
   const fastify = Fastify({
     logger: isDev
       ? {
-          level: process.env.LOG_LEVEL ?? 'info',
-          transport: {
-            target: 'pino-pretty',
-            options: { colorize: true },
-          },
-        }
-      : {
-          level: process.env.LOG_LEVEL ?? 'info',
+        level: process.env.LOG_LEVEL ?? 'info',
+        transport: {
+          target: 'pino-pretty',
+          options: { colorize: true },
         },
+      }
+      : {
+        level: process.env.LOG_LEVEL ?? 'info',
+      },
+  });
+
+  // Register Security Plugins
+  await fastify.register(helmet, {
+    contentSecurityPolicy: false,
+  });
+
+  await fastify.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
   });
 
   // Register CORS

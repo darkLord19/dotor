@@ -3,16 +3,17 @@ import { z } from 'zod';
 import { verifyJWT, type AuthenticatedRequest } from '../proxy/auth.js';
 import { createUserClient, supabaseAdmin } from '../lib/supabase.js';
 import { planQuery, type Message } from '../lib/openai.js';
-import { searchGmail } from '../lib/gmail.js';
-import { getCalendarEvents, refreshAccessToken } from '../lib/calendar.js';
-import { normalizeGmailResults, normalizeCalendarResults, normalizeOutlookMailResults, normalizeOutlookCalendarResults, mergeResults } from '../lib/normalizer.js';
-import { searchOutlook, getOutlookEvents } from '../lib/microsoft-graph.js';
+import { mergeResults } from '../lib/normalizer.js';
+import { refreshAccessToken } from '../lib/calendar.js';
 import { refreshAccessToken as refreshMicrosoftToken } from '../lib/microsoft.js';
 import { synthesizeAnswer } from '../lib/synthesizer.js';
 import { decryptTokens, encrypt, encryptTokens } from '../lib/encryption.js';
-import { getFeatureFlags, isExtensionEnabled, type FeatureFlags } from '../lib/feature-flags.js';
-import { searchWhatsApp } from '../lib/whatsapp.js';
+import { getFeatureFlags, type FeatureFlags } from '../lib/feature-flags.js';
 import type { SearchHit, PendingSearch } from '../types/search.js';
+import { GmailService } from '../services/gmail-service.js';
+import { OutlookService } from '../services/outlook-service.js';
+import { CalendarService } from '../services/calendar-service.js';
+import { WhatsAppService } from '../services/whatsapp-service.js';
 
 const askRequestSchema = z.object({
   query: z.string().min(1).max(1000),
@@ -49,7 +50,6 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
     const supabase = createUserClient(authRequest.accessToken);
 
     // Clean up expired conversations for this user (older than 10 minutes)
-    // Only clean up 'ask' conversations, not synced WhatsApp chat history
     const tenMinutesAgoISO = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     await supabase
       .from('conversations')
@@ -75,14 +75,12 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
         const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
         if (updatedAt < tenMinutesAgo) {
-          // Expired - start new
-          currentConversationId = undefined;
+          currentConversationId = undefined; // Expired
         } else {
           conversationHistory = conversation.messages as unknown as Message[];
         }
       } else {
-        // Not found - start new
-        currentConversationId = undefined;
+        currentConversationId = undefined; // Not found
       }
     }
 
@@ -92,17 +90,15 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
         .insert([{
           user_id: authRequest.userId,
           messages: [],
-          source: 'ask' // Mark as ask session
+          source: 'ask'
         }])
         .select()
         .single();
 
-      if (newConv) {
-        currentConversationId = newConv.id;
-      }
+      if (newConv) currentConversationId = newConv.id;
     }
 
-    // Insert usage event (no query content stored - privacy first)
+    // Insert usage event
     const { error: insertError } = await supabase
       .from('usage_events')
       .insert([{
@@ -122,362 +118,182 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
 
     if (connectionsError) {
       fastify.log.error(connectionsError, 'Failed to fetch connections');
-      // Don't fail yet, maybe no connections but that's fine?
-      // But if we fail to fetch, it's an error.
     }
 
     const googleConnection = connections?.find(c => c.type === 'google');
     const microsoftConnection = connections?.find(c => c.type === 'microsoft');
 
-    // We only block if BOTH are missing AND we plan to search them? 
-    // Actually, let's proceed and check later when planning.
-
     // Helper: Decrypt tokens safely
-    const getDecryptedTokens = (conn: any) => {
+    const decorateWithDecryptedTokens = (conn: any) => {
       try {
-        return decryptTokens({
+        const tokens = decryptTokens({
           access_token: conn.access_token,
           refresh_token: conn.refresh_token,
         });
+        conn.access_token_decrypted = tokens.access_token;
+        conn.refresh_token_decrypted = tokens.refresh_token;
+        return true;
       } catch (e) {
         fastify.log.error(e, `Failed to decrypt ${conn.type} tokens`);
-        return null;
+        return false;
       }
     };
 
-    const googleTokens = googleConnection ? getDecryptedTokens(googleConnection) : null;
-    const microsoftTokens = microsoftConnection ? getDecryptedTokens(microsoftConnection) : null;
+    if (googleConnection) decorateWithDecryptedTokens(googleConnection);
+    if (microsoftConnection) decorateWithDecryptedTokens(microsoftConnection);
 
-    // Helper functions to refresh and update tokens
-    async function refreshGoogleFn(): Promise<string | null> {
-      if (!googleConnection || !googleTokens) return null;
-      fastify.log.info('Refreshing Google access token');
-      try {
-        const newTokens = await refreshAccessToken(googleTokens.refresh_token);
-        if (!newTokens.access_token) throw new Error('No access token returned');
-
-        if (supabaseAdmin) {
-          const encrypted = encrypt(newTokens.access_token);
-          await supabaseAdmin.from('connections').update({
-            access_token: encrypted,
-            token_expires_at: new Date(newTokens.expiry_date || Date.now() + 3600000).toISOString(),
-          }).eq('id', googleConnection.id);
-        }
-        return newTokens.access_token;
-      } catch (error) {
-        fastify.log.error(error, 'Failed to refresh Google token');
-        return null;
-      }
-    }
-
-    async function refreshMicrosoftFn(): Promise<string | null> {
-      if (!microsoftConnection || !microsoftTokens) return null;
-      fastify.log.info('Refreshing Microsoft access token');
-      try {
-        const newTokens = await refreshMicrosoftToken(microsoftTokens.refresh_token || '');
-        if (!newTokens.access_token) throw new Error('No access token returned');
-
-        if (supabaseAdmin) {
-          const encrypted = encryptTokens({
-            access_token: newTokens.access_token,
-            refresh_token: newTokens.refresh_token || microsoftTokens.refresh_token,
-          });
-
-          await supabaseAdmin.from('connections').update({
-            access_token: encrypted.access_token,
-            refresh_token: encrypted.refresh_token,
-            token_expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
-          }).eq('id', microsoftConnection.id);
-        }
-        return newTokens.access_token;
-      } catch (error) {
-        fastify.log.error(error, 'Failed to refresh Microsoft token');
-        return null;
-      }
-    }
-
-    // Check expiry and refresh if needed
-    let activeGoogleToken = googleTokens?.access_token;
-    if (googleConnection) {
+    // Pre-emptive Token Refresh Logic (keep inline for simplicity/safety before parallel search)
+    // We could move this to services too, but doing it here ensures fresh tokens for all services sharing the connection
+    if (googleConnection && (googleConnection as any).access_token_decrypted) {
       const expires = googleConnection.token_expires_at ? new Date(googleConnection.token_expires_at) : null;
       if (!expires || expires < new Date()) {
-        const refreshed = await refreshGoogleFn();
-        if (refreshed) activeGoogleToken = refreshed;
-        // If refresh fails, we continue but might fail later or skip Google
+        try {
+          fastify.log.info('Refreshing Google access token');
+          const newTokens = await refreshAccessToken((googleConnection as any).refresh_token_decrypted);
+          if (newTokens.access_token) {
+            (googleConnection as any).access_token_decrypted = newTokens.access_token;
+            if (supabaseAdmin) {
+              const encrypted = encrypt(newTokens.access_token);
+              await supabaseAdmin.from('connections').update({
+                access_token: encrypted,
+                token_expires_at: new Date(newTokens.expiry_date || Date.now() + 3600000).toISOString(),
+              }).eq('id', googleConnection.id);
+            }
+          }
+        } catch (e) { fastify.log.error(e, 'Failed to refresh Google token'); }
       }
     }
 
-    let activeMicrosoftToken = microsoftTokens?.access_token;
-    if (microsoftConnection) {
+    if (microsoftConnection && (microsoftConnection as any).access_token_decrypted) {
       const expires = microsoftConnection.token_expires_at ? new Date(microsoftConnection.token_expires_at) : null;
       if (!expires || expires < new Date()) {
-        const refreshed = await refreshMicrosoftFn();
-        if (refreshed) activeMicrosoftToken = refreshed;
+        try {
+          fastify.log.info('Refreshing Microsoft access token');
+          const newTokens = await refreshMicrosoftToken((microsoftConnection as any).refresh_token_decrypted || '');
+          if (newTokens.access_token) {
+            (microsoftConnection as any).access_token_decrypted = newTokens.access_token;
+            if (supabaseAdmin) {
+              const encrypted = encryptTokens({
+                access_token: newTokens.access_token,
+                refresh_token: newTokens.refresh_token || (microsoftConnection as any).refresh_token_decrypted,
+              });
+              await supabaseAdmin.from('connections').update({
+                access_token: encrypted.access_token,
+                refresh_token: encrypted.refresh_token,
+                token_expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
+              }).eq('id', microsoftConnection.id);
+            }
+          }
+        } catch (e) { fastify.log.error(e, 'Failed to refresh Microsoft token'); }
       }
     }
 
     try {
-      // Step 0: Get feature flags for user
+      // Step 0: Get feature flags
       const dbFlags = await getFeatureFlags(authRequest.userId);
-
-      // Implicitly determine available sources based on connections
       const hasEmailConnection = !!(googleConnection || microsoftConnection);
       const hasWhatsAppConnection = connections?.some(c => c.type === 'whatsapp') || false;
 
-      // Merge flags (priority: request -> implicit connection -> db flags default)
       const featureFlags: FeatureFlags = {
         ...dbFlags,
         enableLinkedIn: requestFlags?.enableLinkedIn ?? dbFlags.enableLinkedIn,
         enableWhatsApp: requestFlags?.enableWhatsApp ?? (hasWhatsAppConnection || dbFlags.enableWhatsApp),
         enableGmail: requestFlags?.enableGmail ?? (hasEmailConnection || dbFlags.enableGmail),
-        enableOutlook: (hasEmailConnection || dbFlags.enableOutlook), // Defaults to enabled if connected or set in DB
+        enableOutlook: (hasEmailConnection || dbFlags.enableOutlook),
       };
 
-      fastify.log.info({ featureFlags, hasEmailConnection, hasWhatsAppConnection }, 'Feature flags loaded');
-
-      // Step 1: Analyze query and plan in one shot
+      // Step 1: Plan
       fastify.log.info({ query }, 'Planning query');
       const plan = await planQuery(query, conversationHistory, featureFlags);
-      const analysis = plan.analysis;
-      const gmailPlan = plan.gmail;
-      const outlookPlan = plan.outlook;
-      const whatsappPlan = plan.whatsapp;
+      const { analysis, gmail: gmailPlan, outlook: outlookPlan, whatsapp: whatsappPlan } = plan;
 
-      fastify.log.info({ analysis, filteredByFlags: !isExtensionEnabled(featureFlags) }, 'Query planning complete');
+      fastify.log.info({ analysis }, 'Query planning complete');
 
-      const results: SearchHit[] = [];
       const sourcesNeeded: string[] = [];
-      // const domInstructions: DOMInstruction[] = [];
+      const searchPromises: Promise<SearchHit[]>[] = [];
 
-      // Step 2: Fetch Email data if needed
+      // Step 2: Execute Searches in Parallel
 
-      // 2a. Search Gmail
-      if (analysis.needsGmail && gmailPlan) {
+      // Gmail
+      if (analysis.needsGmail && gmailPlan && googleConnection) {
         sourcesNeeded.push('gmail');
-
         const maxResults = gmailPlan.intent === 'summary' || gmailPlan.intent === 'count' ? 20 : 10;
-
-        // Helper for unauthorized check
-        const isUnauthorized = (error: any) =>
-          error?.code === 401 ||
-          error?.status === 401 ||
-          error?.response?.status === 401 ||
-          error?.response?.data?.error?.code === 401;
-
-        if (activeGoogleToken) {
-          try {
-            fastify.log.info({ gmailPlan }, 'Gmail query ready');
-
-            let gmailResults;
-            try {
-              gmailResults = await searchGmail(
-                activeGoogleToken,
-                gmailPlan.gmailQuery,
-                maxResults
-              );
-            } catch (error: any) {
-              if (isUnauthorized(error)) {
-                fastify.log.info('Gmail API returned 401, refreshing token and retrying');
-                try {
-                  const refreshed = await refreshGoogleFn();
-                  if (refreshed) {
-                    activeGoogleToken = refreshed;
-                    gmailResults = await searchGmail(
-                      activeGoogleToken,
-                      gmailPlan.gmailQuery,
-                      maxResults
-                    );
-                  }
-                } catch (refreshError) {
-                  fastify.log.error(refreshError, 'Failed to refresh token after 401');
-                }
-              } else {
-                throw error;
-              }
-            }
-
-            if (gmailResults) {
-              fastify.log.info({ count: gmailResults.messages.length }, 'Gmail search complete');
-              results.push(...normalizeGmailResults(gmailResults.messages));
-            }
-          } catch (error) {
-            fastify.log.error(error, 'Gmail search failed');
-          }
-        }
+        searchPromises.push(
+          GmailService.search({
+            connection: googleConnection as any,
+            query: gmailPlan.gmailQuery,
+            maxResults,
+            logger: fastify.log,
+            supabaseAdmin: (supabaseAdmin as any) ?? undefined
+          })
+        );
       }
 
-      // 2b. Search Outlook
-      if (analysis.needsOutlook && outlookPlan) {
+      // Outlook
+      if (analysis.needsOutlook && outlookPlan && microsoftConnection) {
         sourcesNeeded.push('outlook');
         const maxResults = outlookPlan.intent === 'summary' || outlookPlan.intent === 'count' ? 20 : 10;
-
-        // Helper for unauthorized check
-        const isUnauthorized = (error: any) =>
-          error?.code === 401 ||
-          error?.status === 401 ||
-          error?.response?.status === 401 ||
-          error?.response?.data?.error?.code === 401;
-
-        if (activeMicrosoftToken) {
-          try {
-            fastify.log.info({ outlookPlan }, 'Outlook query start');
-            let outlookResults;
-
-            try {
-              // Use the specific outlook query plan
-              outlookResults = await searchOutlook(activeMicrosoftToken, outlookPlan.outlookQuery, maxResults);
-            } catch (error: any) {
-              if (isUnauthorized(error) || error.message.includes('401')) {
-                fastify.log.info('Outlook API returned 401, refreshing token');
-                const refreshed = await refreshMicrosoftFn();
-                if (refreshed) {
-                  activeMicrosoftToken = refreshed;
-                  outlookResults = await searchOutlook(activeMicrosoftToken, outlookPlan.outlookQuery, maxResults);
-                }
-              } else {
-                throw error;
-              }
-            }
-
-            if (outlookResults) {
-              fastify.log.info({ count: outlookResults.length }, 'Outlook search complete');
-              results.push(...normalizeOutlookMailResults(outlookResults));
-            }
-          } catch (error) {
-            fastify.log.error(error, 'Outlook search failed');
-          }
-        }
+        searchPromises.push(
+          OutlookService.search({
+            connection: microsoftConnection as any,
+            query: outlookPlan.outlookQuery,
+            maxResults,
+            logger: fastify.log,
+            supabaseAdmin: (supabaseAdmin as any) ?? undefined
+          })
+        );
       }
 
-      // Step 3: Fetch Calendar data if needed
+      // Calendar (Google + Outlook)
       if (analysis.needsCalendar) {
         sourcesNeeded.push('calendar');
-        try {
-          const startDate = analysis.calendarDateRange?.start
-            ? new Date(analysis.calendarDateRange.start)
-            : undefined;
-          const endDate = analysis.calendarDateRange?.end
-            ? new Date(analysis.calendarDateRange.end)
-            : undefined;
+        const startDate = analysis.calendarDateRange?.start ? new Date(analysis.calendarDateRange.start) : undefined;
+        const endDate = analysis.calendarDateRange?.end ? new Date(analysis.calendarDateRange.end) : undefined;
 
-          // Helper for unauthorized check (redefined to be safe or reused if lifted scope)
-          const isUnauthorized = (error: any) =>
-            error?.code === 401 ||
-            error?.status === 401 ||
-            error?.response?.status === 401 ||
-            error?.response?.data?.error?.code === 401;
-
-          // 3a. Google Calendar
-          if (activeGoogleToken) {
-            try {
-              let calendarResults;
-              try {
-                calendarResults = await getCalendarEvents(
-                  activeGoogleToken,
-                  startDate,
-                  endDate
-                );
-              } catch (error: any) {
-                if (isUnauthorized(error)) {
-                  fastify.log.info('Calendar API returned 401, refreshing token and retrying');
-                  try {
-                    const refreshed = await refreshGoogleFn();
-                    if (refreshed) {
-                      activeGoogleToken = refreshed;
-                      calendarResults = await getCalendarEvents(
-                        activeGoogleToken,
-                        startDate,
-                        endDate
-                      );
-                    }
-                  } catch (refreshError) {
-                    fastify.log.error(refreshError, 'Failed to refresh token after 401');
-                  }
-                } else {
-                  throw error;
-                }
-              }
-
-              if (calendarResults) {
-                fastify.log.info({ count: calendarResults.events.length }, 'Calendar fetch complete');
-                results.push(...normalizeCalendarResults(calendarResults.events));
-              }
-            } catch (error) {
-              fastify.log.error(error, 'Calendar fetch failed');
-            }
-          }
-
-          // 3b. Outlook Calendar
-          if (activeMicrosoftToken) {
-            try {
-              let outlookEvents;
-
-              try {
-                // Start defaults to 1 month ago if undefined?
-                // End defaults to 1 month in future?
-                // Let's stick to what analysis provided or reasonable defaults
-                const s = startDate || new Date();
-                const e = endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-                outlookEvents = await getOutlookEvents(activeMicrosoftToken, s, e);
-              } catch (error: any) {
-                if (isUnauthorized(error) || error.message.includes('401')) {
-                  fastify.log.info('Outlook Calendar API returned 401, refreshing token');
-                  const refreshed = await refreshMicrosoftFn();
-                  if (refreshed) {
-                    activeMicrosoftToken = refreshed;
-                    const s = startDate || new Date();
-                    const e = endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-                    outlookEvents = await getOutlookEvents(activeMicrosoftToken, s, e);
-                  }
-                } else {
-                  throw error;
-                }
-              }
-
-              if (outlookEvents) {
-                fastify.log.info({ count: outlookEvents.length }, 'Outlook calendar fetch complete');
-                results.push(...normalizeOutlookCalendarResults(outlookEvents));
-              }
-            } catch (error) {
-              fastify.log.error(error, 'Outlook calendar fetch failed');
-            }
-          }
-
-        } catch (error) {
-          fastify.log.error(error, 'Calendar fetch failed');
-        }
+        searchPromises.push(
+          CalendarService.getEvents({
+            googleConnection: googleConnection as any,
+            microsoftConnection: microsoftConnection as any,
+            startDate,
+            endDate,
+            logger: fastify.log,
+            supabaseAdmin: (supabaseAdmin as any) ?? undefined
+          })
+        );
       }
 
-      // Step 4: Fetch WhatsApp data (Local Search)
+      // WhatsApp
       if (featureFlags.enableWhatsApp && analysis.needsWhatsApp && whatsappPlan) {
-        try {
-          fastify.log.info({ whatsappPlan }, 'WhatsApp query ready');
+        sourcesNeeded.push('whatsapp');
+        searchPromises.push(
+          WhatsAppService.search({
+            supabase,
+            userId: authRequest.userId,
+            plan: whatsappPlan,
+            logger: fastify.log
+          })
+        );
+      }
 
-          const waResults = await searchWhatsApp(supabase, authRequest.userId, whatsappPlan);
-          fastify.log.info({ count: waResults.length }, 'WhatsApp search complete');
-          results.push(...waResults);
-          sourcesNeeded.push('whatsapp');
-        } catch (error) {
-          fastify.log.error(error, 'WhatsApp search failed');
+      // Await all searches
+      const resultsSettled = await Promise.allSettled(searchPromises);
+      const allResults: SearchHit[] = [];
+
+      resultsSettled.forEach(result => {
+        if (result.status === 'fulfilled') {
+          allResults.push(...result.value);
+        } else {
+          fastify.log.error(result.reason, 'A search service failed');
         }
-      }
+      });
 
-      // LinkedIn (Local Search - Not implemented yet, no extension search)
-      if (featureFlags.enableLinkedIn && analysis.needsLinkedIn) {
-        fastify.log.info('LinkedIn search requested - local search not fully implemented/empty');
-        // No logic here, just skipping extension instruction as requested
-      }
-
-      // Step 5: Synthesize answer from results (sync response)
-      // Filter sources to only include what was actually searched
-      const actualSourcesSearched = sourcesNeeded;
-      const mergedResults = mergeResults(results);
+      // Step 3: Synthesize
+      const mergedResults = mergeResults(allResults);
       fastify.log.info({ totalResults: mergedResults.length }, 'Synthesizing answer');
 
       const answer = await synthesizeAnswer(query, mergedResults, conversationHistory);
 
-      // Update conversation history
+      // Update history
       if (currentConversationId) {
         const updatedHistory: Message[] = [
           ...conversationHistory,
@@ -507,7 +323,7 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
         status: 'complete',
         request_id: requestId,
         answer,
-        sources_searched: actualSourcesSearched,
+        sources_searched: sourcesNeeded,
         conversationId: currentConversationId,
       };
 
@@ -519,16 +335,6 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
       });
     }
   });
-
-  /*
-    // Get pending search status
-    fastify.get('/ask/:requestId', {
-      preHandler: verifyJWT,
-    }, async (request, reply) => {
-      // ... pending search logic disabled ...
-      return reply.code(404).send({ error: 'Pending search mechanism disabled' });
-    });
-  */
 
   // Get pending search status
   fastify.get('/ask/:requestId', {
@@ -553,7 +359,6 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
       sources_needed: pendingSearch.sources_needed,
     };
 
-    // Include answer if complete
     if (pendingSearch.status === 'complete' && pendingSearch.answer) {
       response.answer = pendingSearch.answer;
     }
@@ -584,7 +389,6 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
       sources_needed: pendingSearch.sources_needed,
     };
 
-    // Include answer if complete
     if (pendingSearch.status === 'complete' && pendingSearch.answer) {
       response.answer = pendingSearch.answer;
     }
@@ -610,7 +414,6 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
       return reply.code(403).send({ error: 'Not authorized' });
     }
 
-    // Store DOM results
     const normalizedResults: SearchHit[] = snippets.map((snippet, index) => ({
       id: `${source}-${index}`,
       source: source as 'linkedin' | 'whatsapp',
@@ -621,18 +424,15 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
 
     pendingSearch.results[source] = normalizedResults;
 
-    // Check if all sources are complete
     const allSourcesComplete = pendingSearch.sources_needed.every(
       src => pendingSearch.results[src] && pendingSearch.results[src]!.length >= 0
     );
 
     if (allSourcesComplete) {
-      // Trigger synthesis in background
       (async () => {
         try {
           const allResults = mergeResults(...Object.values(pendingSearch.results).filter(Boolean) as SearchHit[][]);
 
-          // Fetch conversation history if exists
           let conversationHistory: Message[] = [];
           const supabase = createUserClient(authRequest.accessToken);
 
@@ -650,7 +450,6 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
 
           const answer = await synthesizeAnswer(pendingSearch.query, allResults, conversationHistory);
 
-          // Update conversation history
           if (pendingSearch.conversation_id) {
             const updatedHistory: Message[] = [
               ...conversationHistory,
@@ -671,14 +470,12 @@ export async function askRoutes(fastify: FastifyInstance): Promise<void> {
               .eq('id', pendingSearch.conversation_id);
           }
 
-          // Store answer before cleanup (keep for a short time for polling)
           pendingSearch.answer = answer;
           pendingSearch.status = 'complete';
 
-          // Clean up after a delay to allow polling
           setTimeout(() => {
             pendingSearches.delete(requestId);
-          }, 30000); // Keep for 30 seconds after completion
+          }, 30000);
         } catch (error) {
           fastify.log.error(error, 'Background synthesis failed');
           pendingSearch.status = 'failed';

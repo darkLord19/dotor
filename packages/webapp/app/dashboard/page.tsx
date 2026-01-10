@@ -803,18 +803,6 @@ function AskPageContent() {
   return (
     <div className={styles.content}>
       <div className={styles.container}>
-        {conversationId && messages.length > 0 && (
-          <button
-            onClick={handleNewChat}
-            className={styles.newChatButton}
-            title="Start new conversation"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            New Chat
-          </button>
-        )}
         {messages.length === 0 && !loading && (
           <div className={styles.hints}>
             <h3>Try asking:</h3>
@@ -869,6 +857,18 @@ function AskPageContent() {
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
+          {conversationId && messages.length > 0 && (
+            <button
+              onClick={handleNewChat}
+              className={styles.newChatButton}
+              title="Start new conversation"
+              style={{ marginRight: '1rem' }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          )}
           <div className={styles.inputWrapper}>
             <input
               type="text"
