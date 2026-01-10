@@ -22,6 +22,7 @@ function ProfileContent() {
     const [updating, setUpdating] = useState(false);
 
     // Security state
+    const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -82,6 +83,15 @@ function ProfileContent() {
                 throw new Error(data.error || 'Failed to update name');
             }
 
+            // Refresh user data from server to confirm persistence
+            const { data: { user: updatedUser } } = await supabase.auth.getUser();
+            if (updatedUser) {
+                setUser(updatedUser);
+                setName(updatedUser.user_metadata?.full_name || updatedUser.user_metadata?.name || '');
+                // Update session in storage
+                await supabase.auth.refreshSession();
+            }
+
             setMessage({ type: 'success', text: 'Profile updated successfully' });
             setTimeout(() => setMessage(null), 3000);
         } catch (error: any) {
@@ -112,7 +122,10 @@ function ProfileContent() {
                     'Authorization': `Bearer ${session.access_token}`,
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ password: newPassword }),
+                body: JSON.stringify({
+                    currentPassword,
+                    password: newPassword
+                }),
             });
 
             if (!response.ok) {
@@ -121,6 +134,7 @@ function ProfileContent() {
             }
 
             setMessage({ type: 'success', text: 'Password updated successfully' });
+            setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
             setTimeout(() => setMessage(null), 3000);
@@ -232,6 +246,16 @@ function ProfileContent() {
                     <section className={styles.section}>
                         <h2 className={styles.sectionTitle}>Security Settings</h2>
                         <form onSubmit={handleUpdatePassword} className={styles.form}>
+                            <div className={styles.formGroup}>
+                                <label className={styles.label}>Current Password</label>
+                                <input
+                                    type="password"
+                                    className={styles.input}
+                                    value={currentPassword}
+                                    onChange={(e) => setCurrentPassword(e.target.value)}
+                                    required
+                                />
+                            </div>
                             <div className={styles.formGroup}>
                                 <label className={styles.label}>New Password</label>
                                 <input

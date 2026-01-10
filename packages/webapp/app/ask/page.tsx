@@ -797,19 +797,6 @@ function AskPageContent() {
   };
 
   // Show loading state while checking Google connection
-  if (checkingGoogle) {
-    return (
-      <div className={styles.loadingState}>
-        <span className={styles.spinner} />
-        <p>Loading...</p>
-        {initError && (
-          <p style={{ marginTop: '1rem', color: 'var(--error)', fontSize: '0.875rem' }}>
-            {initError}
-          </p>
-        )}
-      </div>
-    );
-  }
 
   // Show Google connection prompt only if we've checked and confirmed it's not connected
   // Don't show if we're still checking or if status is null (might still be loading)

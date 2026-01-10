@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { createClient } from '@supabase/supabase-js';
 import { verifyJWT, type AuthenticatedRequest } from '../proxy/auth.js';
-import { createUserClient, supabaseAdmin } from '../lib/supabase.js';
+import { createUserClient, supabaseAdmin, supabaseUrl, supabasePublishableKey } from '../lib/supabase.js';
 import { getFeatureFlags, type FeatureFlags } from '../lib/feature-flags.js';
 
 const updateProfileSchema = z.object({
@@ -9,6 +10,7 @@ const updateProfileSchema = z.object({
 });
 
 const updatePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
   password: z.string().min(6),
 });
 
@@ -114,6 +116,7 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     }
   });
 
+
   // Update password
   fastify.put('/account/password', {
     preHandler: verifyJWT,
@@ -128,14 +131,25 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
       });
     }
 
-    const { password } = parseResult.data;
+    const { currentPassword, password } = parseResult.data;
     const supabase = createUserClient(authRequest.accessToken);
 
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-      if (userError || !user) {
+      if (userError || !user || !user.email) {
         return reply.code(401).send({ error: 'Failed to get user' });
+      }
+
+      // Verify current password
+      const tempClient = createClient(supabaseUrl, supabasePublishableKey);
+      const { error: signInError } = await tempClient.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword
+      });
+
+      if (signInError) {
+        return reply.code(400).send({ error: 'Incorrect current password' });
       }
 
       if (!supabaseAdmin) {
@@ -174,7 +188,7 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     preHandler: verifyJWT,
   }, async (request, reply) => {
     const authRequest = request as AuthenticatedRequest;
-    
+
     if (!supabaseAdmin) {
       fastify.log.error('Supabase admin client not configured');
       return reply.code(500).send({ error: 'Server configuration error' });
@@ -225,7 +239,7 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       fastify.log.info({ userId: authRequest.userId }, 'Account deleted successfully');
-      
+
       return { success: true, message: 'Account deleted successfully' };
     } catch (error) {
       fastify.log.error(error, 'Account deletion error');
@@ -238,7 +252,7 @@ export async function accountRoutes(fastify: FastifyInstance): Promise<void> {
     preHandler: verifyJWT,
   }, async (request, _reply) => {
     const authRequest = request as AuthenticatedRequest;
-    
+
     try {
       const flags = await getFeatureFlags(authRequest.userId);
       return {

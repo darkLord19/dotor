@@ -74,7 +74,7 @@
 
 .container {
   flex: 1;
-  max-width: 900px;
+  max-width: 1400px;
   width: 100%;
   margin: 0 auto;
   padding: var(--space-8) var(--space-6);
@@ -101,6 +101,9 @@
   border-radius: var(--radius-lg);
   transition: all var(--transition-base);
   box-shadow: var(--shadow-sm);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .inputWrapper:focus-within {
@@ -145,7 +148,7 @@
   background: var(--surface-tertiary);
   padding: var(--space-4) var(--space-6);
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
-  max-width: 80%;
+  max-width: min(80%, 1000px);
   border: 1px solid var(--border-primary);
   color: var(--text-primary);
   font-size: var(--text-base);
@@ -168,8 +171,15 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .input {
@@ -357,4 +367,3 @@
     padding: 1rem;
   }
 }
-
